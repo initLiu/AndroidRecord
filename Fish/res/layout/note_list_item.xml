@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical" >
+
+    <TextView
+        android:id="@+id/item_time"
+        android:layout_width="fill_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:gravity="left|center_vertical"
+        android:text="2015-01-20"
+        android:textSize="@dimen/list_item_text_size" />
+
+    <TextView
+        android:id="@+id/item_title"
+        android:layout_width="fill_parent"
+        android:layout_height="wrap_content"
+        android:layout_below="@id/item_time"
+        android:layout_marginTop="10dp"
+        android:text="你在学习Anroid开发中走了哪些弯路?"
+        android:textSize="@dimen/list_item_text_size" />
+
+    <TextView
+        android:id="@+id/item_content"
+        android:layout_width="fill_parent"
+        android:layout_height="wrap_content"
+        android:layout_below="@id/item_title"
+        android:layout_marginTop="10dp"
+        android:text="在学习之路上，每个人都会走一些弯路，犯一些错误，前世之事后事之师，真心希望Android初学者不要重蹈覆辙。1在日企待的时间太久，日语学习投入时间过多，技术上没什么长进"
+        android:textSize="@dimen/list_item_text_size"
+        android:maxLines="3"
+        android:ellipsize="end" />
+
+</RelativeLayout>
