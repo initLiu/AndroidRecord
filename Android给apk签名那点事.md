@@ -15,7 +15,7 @@ keytool -genkey -keystore test.keystore  -alias test -keyalg RSA -validity 10000
 
 ## 签名
 ```xml
-jarsigner -verbose -keystore test.keystore -signedjar signed.apk t.apk 'test'
+jarsigner -verbose -keystore test.keystore -signedjar signed.apk t.apk "test"
 ```
 1.  -verbose：指定生成详细输出
 2.  -keystore：指定数字证书存储路径
