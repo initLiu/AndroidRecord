@@ -417,3 +417,215 @@ protected boolean drawChild(Canvas canvas, View child, long drawingTime) {
 }
 ```
 可以看见drawChild()方法调运了子View的draw()方法。所以说ViewGroup类已经为我们重写了dispatchDraw()的功能实现，我们一般不需要重写该方法，但可以重载父类函数实现具体的功能。
+
+
+# DecorView的创建过程
+Activity显示视图是通过setContentView设置的
+```java
+public void setContentView(@LayoutRes int layoutResID) {
+        getWindow().setContentView(layoutResID);
+        initWindowDecorActionBar();
+    }
+```
+代码中显示最后调用了Window的setContentView设置布局。
+```java
+final void attach(Context context, ActivityThread aThread,
+            Instrumentation instr, IBinder token, int ident,
+            Application application, Intent intent, ActivityInfo info,
+            CharSequence title, Activity parent, String id,
+            NonConfigurationInstances lastNonConfigurationInstances,
+            Configuration config, String referrer, IVoiceInteractor voiceInteractor,
+            Window window) {
+        attachBaseContext(context);
+        ......
+
+        mWindow = new PhoneWindow(this, window);//mWindow是PhoneWindow类型
+        ......
+}
+```
+```java
+//PhoneWindow.java
+public class PhoneWindow extends Window implements MenuBuilder.Callback {
+    ....
+    // This is the top-level view of the window, containing the window decor.
+    private DecorView mDecor;//这是最顶成的View
+    .....
+    // This is the view in which the window contents are placed. It is either
+    // mDecor itself, or a child of mDecor where the contents go.
+    ViewGroup mContentParent;//DecorView子view或者是DecorView本身
+    ......
+    @Override
+    public void setContentView(int layoutResID) {
+        // Note: FEATURE_CONTENT_TRANSITIONS may be set in the process of installing the window
+        // decor, when theme attributes and the like are crystalized. Do not check the feature
+        // before this happens.
+        if (mContentParent == null) {
+            installDecor();
+        } else if (!hasFeature(FEATURE_CONTENT_TRANSITIONS)) {
+            mContentParent.removeAllViews();
+        }
+
+        if (hasFeature(FEATURE_CONTENT_TRANSITIONS)) {
+            final Scene newScene = Scene.getSceneForLayout(mContentParent, layoutResID,
+                    getContext());
+            transitionTo(newScene);
+        } else {
+            mLayoutInflater.inflate(layoutResID, mContentParent);
+        }
+        mContentParent.requestApplyInsets();
+        final Callback cb = getCallback();
+        if (cb != null && !isDestroyed()) {
+            cb.onContentChanged();
+        }
+        mContentParentExplicitlySet = true;
+    }
+}
+
+public class DecorView extends FrameLayout implements RootViewSurfaceTaker, WindowCallbacks {
+    .....
+    //DecorView继承FrameLayout
+}
+```
+mContentParent为null，调用installDecor方法初始化DecorView.
+```java
+private void installDecor() {
+    mForceDecorInstall = false;
+    if (mDecor == null) {
+        mDecor = generateDecor(-1);//构建DecorView
+        mDecor.setDescendantFocusability(ViewGroup.FOCUS_AFTER_DESCENDANTS);
+        mDecor.setIsRootNamespace(true);
+        if (!mInvalidatePanelMenuPosted && mInvalidatePanelMenuFeatures != 0) {
+            mDecor.postOnAnimation(mInvalidatePanelMenuRunnable);
+        }
+    } else {
+        mDecor.setWindow(this);
+    }
+
+    if (mContentParent == null) {
+        mContentParent = generateLayout(mDecor);//构建mContentParent
+    }
+}
+
+//初始化DecorView
+protected DecorView generateDecor(int featureId) {
+        // System process doesn't have application context and in that case we need to directly use
+        // the context we have. Otherwise we want the application context, so we don't cling to the
+        // activity.
+        Context context;
+        if (mUseDecorContext) {
+            Context applicationContext = getContext().getApplicationContext();
+            if (applicationContext == null) {
+                context = getContext();
+            } else {
+                context = new DecorContext(applicationContext, getContext().getResources());
+                if (mTheme != -1) {
+                    context.setTheme(mTheme);
+                }
+            }
+        } else {
+            context = getContext();
+        }
+        return new DecorView(context, featureId, this, getAttributes());
+    }
+ protected ViewGroup generateLayout(DecorView decor) {
+     .....
+     ViewGroup contentParent = (ViewGroup)findViewById(ID_ANDROID_CONTENT);//com.android.internal.R.id.content;
+     .....
+     return contentParent;
+ }
+```
+查找com.android.internal.R.id.content的布局，我们接下来看看findViewById方法的实现
+```java
+ public View findViewById(@IdRes int id) {
+        return getDecorView().findViewById(id);
+    }
+```
+原来是从DecorView中查找R.id.content。可以看出mContentParent是DecorView的一个子View。
+
+
+# ViewRootImpl的创建过程
+Activity 的onResume方法是通过ActivityThread的handleResumeActivity方法调用启动的。
+```java
+//ActivityThread.java
+final void handleResumeActivity(IBinder token,
+            boolean clearHide, boolean isForward, boolean reallyResume, int seq, String reason) {
+    .....
+    // TODO Push resumeArgs into the activity for consideration
+    r = performResumeActivity(token, clearHide, reason);//resume Activity
+    ....
+    if (r.window == null && !a.mFinished && willBeVisible) {
+        .....
+        r.window = r.activity.getWindow();
+        View decor = r.window.getDecorView();
+        decor.setVisibility(View.INVISIBLE);
+        ViewManager wm = a.getWindowManager();//通过调用关系可以找到ViewManager是WindowManagerImpl类型
+        a.mDecor = decor;
+        ...
+        if (a.mVisibleFromClient && !a.mWindowAdded) {
+            a.mWindowAdded = true;
+            wm.addView(decor, l);//调用WindowManagerImpl的addView方法
+        }
+    }
+}
+```
+```java
+//WindowManagerImpl.java
+@Override
+public void addView(@NonNull View view, @NonNull ViewGroup.LayoutParams params) {
+    applyDefaultToken(params);
+    mGlobal.addView(view, params, mContext.getDisplay(), mParentWindow);
+}
+
+//WindowManagerGlobal.java
+public void addView(View view, ViewGroup.LayoutParams params,
+            Display display, Window parentWindow) {
+    ....
+    ViewRootImpl root;
+    View panelParentView = null;
+    .....
+    root = new ViewRootImpl(view.getContext(), display);
+
+    view.setLayoutParams(wparams);
+
+    mViews.add(view);
+    mRoots.add(root);
+    mParams.add(wparams);
+    ...
+     // do this last because it fires off messages to start doing things
+    root.setView(view, wparams, panelParentView);
+    ....
+}
+
+//ViewRootImpl.java
+ /**
+     * We have one child
+     */
+public void setView(View view, WindowManager.LayoutParams attrs, View panelParentView) {
+    synchronized (this) {
+        if (mView == null) {
+            mView = view;//这里mView就等于DecorView
+            ......
+            view.assignParent(this);//为DecorView设置mParent。这里就解释了为什么ViewRootImpl是DecorView的parent
+            ....
+        }
+        .....
+    }
+    ...........
+}
+
+//View.java
+/*
+     * Caller is responsible for calling requestLayout if necessary.
+     * (This allows addViewInLayout to not request a new layout.)
+     */
+    void assignParent(ViewParent parent) {
+        if (mParent == null) {
+            mParent = parent;
+        } else if (parent == null) {
+            mParent = null;
+        } else {
+            throw new RuntimeException("view " + this + " being added, but"
+                    + " it already has a parent");
+        }
+    }
+```
