@@ -629,3 +629,94 @@ public void setView(View view, WindowManager.LayoutParams attrs, View panelParen
         }
     }
 ```
+
+# ViewGroup中默认是不会调用draw方法的，会直接调用dispatchDraw
+首先看ViewGroup的构造方法
+```java
+public ViewGroup(Context context, AttributeSet attrs, int defStyleAttr, int defStyleRes) {
+        super(context, attrs, defStyleAttr, defStyleRes);
+        initViewGroup();
+        initFromAttributes(context, attrs, defStyleAttr, defStyleRes);
+}
+private void initViewGroup() {
+    // ViewGroup doesn't draw by default
+    if (!debugDraw()) {
+        setFlags(WILL_NOT_DRAW, DRAW_MASK);//和调用setWillNotDraw方法一致
+    }
+    ......
+}
+
+void setFlags(int flags, int mask) {
+    if ((changed & DRAW_MASK) != 0) {
+            if ((mViewFlags & WILL_NOT_DRAW) != 0) {
+                if (mBackground != null
+                        || (mForegroundInfo != null && mForegroundInfo.mDrawable != null)) {
+                    mPrivateFlags &= ~PFLAG_SKIP_DRAW;
+                } else {
+                    mPrivateFlags |= PFLAG_SKIP_DRAW;
+                }
+            } else {
+                mPrivateFlags &= ~PFLAG_SKIP_DRAW;
+            }
+            requestLayout();
+            invalidate(true);
+        }
+}
+
+```
+//通过以上代码发现，如果ViewGroup没有设置WILL_NOT_DRAW，不设置PFLAG_SKIP_DRAW。如果ViewGroup设置了WILL_NOT_DRAW，并且设置了background或者foreground，则不设置PFLAG_SKIP_DRAW，否者设置PFLAG_SKIP_DRAW。
+
+View的绘制是从ViewRootImpl开始绘制的。
+```java
+private boolean drawSoftware(Surface surface, AttachInfo attachInfo, int xoff, int yoff,
+            boolean scalingRequired, Rect dirty) {
+    ....
+    mView.draw(canvas);//通过之前的分析，mView是DecorView，DecorView继承FrameLayout
+    //所以上面这句话，会调用到View的draw方法。
+    ....
+}
+
+//View.java
+public void draw(Canvas canvas) {
+    ....
+    dispatchDraw(canvas);//DecorView开始绘制子view
+    .....
+}
+
+//ViewGroup.java
+@Override
+protected void dispatchDraw(Canvas canvas) {
+    ...
+    drawChild(canvas, transientChild, drawingTime);//绘制子view
+    .....
+}
+protected boolean drawChild(Canvas canvas, View child, long drawingTime) {
+    return child.draw(canvas, this, drawingTime);//绘制子view
+}
+```
+如果子view是ViewGroup，就会调用到如下方法：
+```java
+boolean draw(Canvas canvas, ViewGroup parent, long drawingTime) {
+    ......
+    if (!drawingWithDrawingCache) {
+            if (drawingWithRenderNode) {
+                mPrivateFlags &= ~PFLAG_DIRTY_MASK;
+                ((DisplayListCanvas) canvas).drawRenderNode(renderNode);
+            } else {
+                // Fast path for layouts with no backgrounds
+                //关键部分
+                //如果设置了PFLAG_SKIP_DRAW，就会直接调用dispatchDraw，否则就会调用draw进行绘制。
+                if ((mPrivateFlags & PFLAG_SKIP_DRAW) == PFLAG_SKIP_DRAW) {
+                    mPrivateFlags &= ~PFLAG_DIRTY_MASK;
+                    dispatchDraw(canvas);
+                } else {
+                    draw(canvas);
+                }
+            }
+        }
+    ........
+}
+```
+如果设置了PFLAG_SKIP_DRAW，就会直接调用dispatchDraw，否则就会调用draw进行绘制。
+结合上面的分析在ViewGroup的构造方法中会对PFLAG_SKIP_DRAW进行初始化，可以总结为:</br>
+<font color=red>如果ViewGroup没有设置WILL_NOT_DRAW，会调用draw方法。如果ViewGroup设置了WILL_NOT_DRAW，并且设置了background或者foreground，调用draw方法，否则调用dispatchDraw不调用draw方法。</font>
