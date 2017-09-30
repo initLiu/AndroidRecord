@@ -1,0 +1,10 @@
+使用下面的代码可以去除log输出
+-assumenosideeffects class android.util.Log {
+    public static *** e(...);
+    public static *** w(...);
+    public static *** i(...);
+    public static *** d(...);
+    public static *** v(...);
+}
+
+assumenosideeffects：表示指定的代码无效，可以优化，最终效果表现为不执行
