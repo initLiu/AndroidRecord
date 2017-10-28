@@ -1,5 +1,5 @@
 ```java
-ublic void addView(View view, ViewGroup.LayoutParams params,
+public void addView(View view, ViewGroup.LayoutParams params,
             Display display, Window parentWindow) {
              ViewRootImpl root;
     View panelParentView = null;   
@@ -674,3 +674,54 @@ public void setWillNotDraw(boolean willNotDraw) {
     setFlags(willNotDraw ? WILL_NOT_DRAW : 0, DRAW_MASK);
 }
 ```
+
+# requestLayout 和invalidate的区别
+
+* ## requestLayout()
+```java
+//base.core.java.android.view
+public void requestLayout() {
+    ...
+    //添加了下面两个标志位
+    mPrivateFlags |= PFLAG_FORCE_LAYOUT;
+    mPrivateFlags |= PFLAG_INVALIDATED;
+    
+    //调用父view的requestlayout方法
+    //这样一级一级往上调用直到DecoreView,从前面的分析可以知道，DecoreView的parent是ViewRootImpl。
+    //所以最后会调用到ViewRootImpl的requestLayout方法，然后按照之前的分析开始measure，layout，draw的调用
+    if (mParent != null && !mParent.isLayoutRequested()) {
+        mParent.requestLayout();
+    }
+}
+
+
+public final void measure(int widthMeasureSpec, int heightMeasureSpec) {
+    ....
+    //在reqrequestLayout方法中设置了mPrivateFlags |= PFLAG_FORCE_LAYOUT;标志为，所以view会重新计算
+    final boolean forceLayout = (mPrivateFlags & PFLAG_FORCE_LAYOUT) == PFLAG_FORCE_LAYOUT;
+    ....
+    if (forceLayout || needsLayout) {
+        ...
+        onMeasure(widthMeasureSpec, heightMeasureSpec);
+        ...
+        mPrivateFlags |= PFLAG_LAYOUT_REQUIRED;//设置layout标志位
+        ...
+    }
+    ...
+}
+
+public void layout(int l, int t, int r, int b) {
+    ...
+    //measure之后会设置layout标志位mPrivateFlags |= PFLAG_LAYOUT_REQUIRED，所以onlayout也会调用
+    if (changed || (mPrivateFlags & PFLAG_LAYOUT_REQUIRED) == PFLAG_LAYOUT_REQUIRED) {
+        onLayout(changed, l, t, r, b);
+        ....
+    }
+}
+//接下来就会调用draw
+```
+<font color='red'>**所以reqrequestLayout()方法会使整个view树重新measure，layout，draw**</font>
+
+* ## invalidate()
+
+<font color='red'>**invalidate()方法会使当前view重绘**</font>
