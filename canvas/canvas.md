@@ -18,6 +18,51 @@ public void drawPoint (float x, float y, Paint paint)
 ```
 x和y是点的坐标。点的大小可以通过pain.setStrokeWidth(width)来设置；点的形状可以通过paint.setStrokeCap(cap)来设置：ROUND画出来是圆形的点，SQUARE或BUTT画出来的是方形的点
 
+* ## canvas.translate()移动画布的原点
+```java
+public void translate (float dx, float dy)
+//dx 	The distance to translate in X  沿x轴移动的距离
+//dy 	The distance to translate in Y 沿y轴移动的距离
+```
+```java
+canvas.save();
+canvas.translate(300, 300);//原点在x,y轴都移动300px，原点(300,300)
+canvas.drawCircle(0, 0, 200, paint);//以(0,0)为圆心画圆，这个(0,0)圆点是相对与原点(300,300)的
+canvas.translate(0, 200);//原点在y轴移动200px，原点(300,500)
+canvas.drawCircle(0, 0, 200, paint);//以(0,0)为圆心画圆，这个(0,0)圆点是相对与原点(300,500)的
+canvas.restore();
+```
+![](./12.png)
+
+* ## canvas.clipRect() 范围裁切
+```java
+public boolean clipRect (int left, int top, int right, int bottom)
+```
+**裁切方法之后的绘制代码，都会被限定在裁切范围内，超出裁切范围的部分，都不会显示**
+*例子*
+```java
+canvas.drawBitmap(bitmap, 0, 0, paint);//画原图
+canvas.save();
+canvas.translate(bitmap.getWidth(), 0);//为了有对比效果，将画布的原点向右移动bitmap.getWidth()像素
+canvas.clipRect(0, 0, 300, 300);//裁剪
+canvas.drawBitmap(bitmap, 0, 0, paint);//画图
+canvas.restore();
+```
+*效果*
+![](./13.png)
+
+* ## canvas几何变换
+* canvas.translate 移动
+* canvas.rotate 旋转
+* canvas.scale 缩放
+* canvas.skew 错切
+**<font color='red'>canvas的几何变换是倒叙的</font>**
+例如：如果想让canvas先移动再旋转，需要把rotate写在translate的上面
+```java
+canvas.rotate(45,px,py);
+canvas.translate(dx,dy);
+canvas.drawBitmap(bitmap,x,y,paint);
+```
 
 # path
 * ## path中画弧线
