@@ -131,7 +131,7 @@ private void performMeasure(int childWidthMeasureSpec, int childHeightMeasureSpe
     Trace.traceBegin(Trace.TRACE_TAG_VIEW, "measure");
     try {
         //这里mView是DecoreView(extends framelayout)
-        //childHeightMeasureSpec，chilchildWidthMeasureSpec是Decorview期望的长宽
+        //childHeightMeasureSpec，chilchildWidthMeasureSpec是由父view计算出的当前vew的大小
         mView.measure(childWidthMeasureSpec, childHeightMeasureSpec);//3.1
     } finally {
         Trace.traceEnd(Trace.TRACE_TAG_VIEW);
