@@ -51,17 +51,62 @@ canvas.restore();
 *效果*
 ![](./13.png)
 
-* ## canvas几何变换
-* canvas.translate 移动
-* canvas.rotate 旋转
-* canvas.scale 缩放
-* canvas.skew 错切
+* ## canvas.rotate()旋转
+>https://app.yinxiang.com/shard/s16/nl/2455596/04ac5457-639f-49ff-b061-4259d9f03877/
+
+**旋转的是坐标系**
+
+*以（0,0）位旋转中心，旋转45度后坐标系如图*
+![](./15.png)
+```java
+Paint paint = new Paint();
+paint.setStyle(Paint.Style.STROKE);
+paint.setStrokeWidth(10);
+paint.setColor(Color.BLACK);
+canvas.drawRect(0, 0, 300, 300, paint);
+paint.setColor(Color.RED);
+canvas.save();
+canvas.rotate(45);
+canvas.drawRect(0, 0, 300, 300, paint);
+canvas.restore();
+```
+*效果图*
+
+![](./16.png)
+
+
+* ## canvas几何变换包括 
+1. canvas.translate 移动
+2. canvas.rotate 旋转
+3. canvas.scale 缩放
+4. canvas.skew 错切
+
 **<font color='red'>canvas的几何变换是倒叙的</font>**
+
 例如：如果想让canvas先移动再旋转，需要把rotate写在translate的上面
 ```java
 canvas.rotate(45,px,py);
+
 canvas.translate(dx,dy);
+
 canvas.drawBitmap(bitmap,x,y,paint);
+```
+
+```java
+public final void scale(float sx, float sy, float px, float py) {
+    translate(px, py);
+    scale(sx, sy);
+    translate(-px, -py);
+}
+```
+以px,py为中心的缩放，内部实现是:x、y轴先移动px,py，然后以当前原点缩放，最后x、y在移动-px,-py。
+其他几何变换都是类似的
+```java
+public final void rotate(float degrees, float px, float py) {
+    translate(px, py);
+    rotate(degrees);
+    translate(-px, -py);
+}
 ```
 
 # path
@@ -165,3 +210,41 @@ INVERSE_WINDING
 **图形的方向：对于添加子图形类方法（如 Path.addCircle() Path.addRect()）的方向，由方法的 dir 参数来控制，这个在前面已经讲过了；而对于画线类的方法（如 Path.lineTo() Path.arcTo()）就更简单了，线的方向就是图形的方向。**<br>
 所以，完整版的 EVEN_ODD 和 WINDING 的效果应该是这样的：![](./10.png)<br>
 而 INVERSE_EVEN_ODD 和 INVERSE_WINDING ，只是把这两种效果进行反转而已
+
+# Matrix
+matrix.prexxx 在队列最前面插入
+matrix.postxxx 在队列最后面追加
+matrix.setxxx 清空队列在添加
+
+# Camera
+```java
+int bitmapWidth = bitmap.getWidth();
+int bitmapHeight = bitmap.getHeight();
+int centerX = getWidth() / 2;
+int centerY = getHeight() / 2;
+int x = centerX - bitmapWidth / 2;
+int y = centerY - bitmapHeight / 2;
+
+canvas.save();
+canvas.clipRect(0, 0, getWidth(), centerY);
+canvas.drawBitmap(bitmap, x, y, paint);
+canvas.restore();
+
+canvas.save();
+if (degree < 90) {
+    canvas.clipRect(0, centerY, getWidth(), getHeight());
+} else {
+    canvas.clipRect(0, 0, getWidth(), centerY);
+}
+
+camera.save();
+camera.rotateX(degree);
+canvas.translate(centerX, centerY);// 旋转之后把投影移动回来
+camera.applyToCanvas(canvas);// 把旋转投影到 Canvas
+canvas.translate(-centerX, -centerY);// 旋转之前把绘制内容移动到轴心（原点）
+//Canvas 的几何变换顺序是反的，所以要把移动到中心的代码写在下面，把从中心移动回来的代码写在上面。
+camera.restore();
+
+canvas.drawBitmap(bitmap, x, y, paint);
+canvas.restore();
+```
