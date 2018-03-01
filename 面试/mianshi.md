@@ -1,3 +1,4 @@
+# Java知识
 ## java中==和equals和hashCode的区别
 1.==是操作符，equals是方法
 2.==比较的是两个对象的印象是否相同。equals是object里面的方法，object类里面equals默认实现就是用==进行比较的，所有object里面==和equals结果是一样的。
@@ -177,3 +178,163 @@ public final class $Proxy1 extends Proxy implements Subject{
     }
 }
 ```
+***
+## Java的异常体系
+1. Throwable是所有异常和错误的父类，有两个子类Error和Exception。
+    * Error是程序无法处理的错误，比如OutofMemoryError、ThreadDeath，这些错误发生时，Java虚拟机一般会选择终止线程。
+    * Exception是程序本身可以处理的异常，这种异常分为两大类运行时异常和非运行时异常。
+        1. 运行时异常是RuntimeException类及其子类异常，如NullPointerException、IndexOutOfBoundsException等。这些异常是不检查异常，程序可以选择捕获处理，也可以不处理。这些异常一般是由于程序逻辑错误引起的、
+        2. 非运行时异常是RuntimeException以外的异常，类型都属于Exception类及其子类。一般属于必须要处理的异常，如果不处理程序编译不通过。如IOException
+
+2. try语句块，表示要尝试运行代码，try语句块中代码受异常监控，其中代码发生异常时，会抛出异常对象。 catch语句块会捕获try代码块中发生的异常并在其代码块中做异常处理。finally语句块是紧跟catch语句后的语句块，这个语句块总是会在方法返回前执行
+3. throw、throws关键字  
+    * throw关键字是用于方法体内部，用来抛出一个Throwable类型的异常。如果抛出了非运行时异常，则还应该在方法头部声明方法可能抛出的异常类型，该方法的调用者也必须检查处理抛出的异常。如果抛出的是Error或RuntimeException，则该方法的调用者可选择处理该异常。  
+    * throws关键字用于方法体外部的方法声明部分,用来声明方法可能会抛出某些异常。仅当抛出了检查异常，该方法的调用者才必须处理或者重新抛出该异常。
+***
+## 谈谈你对解析与分派的认识。
+1. 解析
+方法在程序真正运行之前就有一个可以确定的调用版本，并且这个方法调用版本在运行期间是不可改变的，即“编译期可知，运行期不可变”，这类目标的方法的调用成为**解析**
+符合条件的有静态方法、私有方法、实例构造方法、父类方法
+2. 分派
+解析调用一定是个静态的过程，在编译期就完全确定，在类加载的解析阶段就将涉及的符号引用全部转变为可以确定的直接引用，不会延迟到运行期再去完成。而分派调用则可能是静态的也可能是动态的。分派是多态性的体现。Java虚拟机底层提供了我们开发中“重载”和“重写”的底层实现。其中重载属于静态分派，而重写则是动态分派。
+***
+## Java中实现多态的机制是什么？
+通过继承，定义一个父类的引用，调用是执行的是子类的方法。
+***
+## 如何将一个Java对象序列化到文件里？
+实现serializable接口，然后通过objectoutputstream将对象写入到文件。
+***
+## Java中的字符串常量池
+Java中字符串对象创建有两种形式，一种为字面量形式，如
+```java
+String str="droid"
+```
+另一种就是使用new这种标准的构造对象的方法，如
+```java
+String str = new String("droid");
+```
+这两种方式我们在代码编写时都经常使用，尤其是字面量的方式。然后这两种实现其实存在着一些性能和内存占用的差别。这一切都是源于JVM为了减少字符串对象的重复创建，其维护了一个特殊的内存，这端内存被称为字符串常量池或者字符串字面量池。
+### 工作原理
+当代码中出现字面量形式创建字符串对象是，JVM首先会对这个字面量进行检查，如果字符串常量池中存在相同内容的字符串对象的引用，则将这个引用返回，否则新的字符串对象被创建，然后将这个引用放入字符串常量池，并返回该引用。
+### 举例说明
+#### 字面量创建形式
+```java
+String str1 = "droid";
+```
+JVM检测这个字面量，这里我们认为没有内容为droid的对象存在。jvm通过字符串常量池查不到内容为droid的字符串对象存在，那么会创建这个字符串对象，然后将刚创建的对象的引用放入到字符串常量池中，并且将引用返回给变量str1.  
+
+如果接下来有这样一段代码
+```java
+String str2 = "droid";
+```
+同样jvm还是要检测这个字面量，jvm通过查找字符串常量池，发现内容为“droid”字符串对象存在，于是将已经存在的字符串对象的引用返回给变量str2.<font color='red'>注意这里不会重新创建新的字符串对象。</font>
+
+验证是否为str1和str2是否指向同一对象，我们可以通过这段代码
+```java
+System.out.println(str1 == str2);
+```
+结果为true
+### 使用new创建
+```java
+String str3 = new String("droid");
+```
+1. 在常量池中查找是否有内容为“droid”的字符串对象
+    * 有则返回对应的引用
+    * 没有则创建对应字符串对象，然后放入到字符串常量池中
+2. 在堆中new一个String("droid")对象
+3. 将引用返回给变量str3
+
+所以，常量池中没有“droid”字面量则创建两个对象，否则创建一个对象。
+
+当我们使用了new来构造字符串对象的时候，不管字符串常量池中有没有相同内容的对象的引用，新的字符串对象都会创建。因此我们使用下面代码测试一下，
+```java
+String str3 = new String("droid");
+System.out.println(str1 == str3);
+```
+结果如我们所想，为false，表明这两个变量指向的为不同的对象。
+
+#### intern
+对于上面使用new创建的字符串对象，如果想将这个对象的引用加入到字符串常量池，可以使用intern方法。
+
+调用intern后，首先检查字符串常量池中是否有改对象的引用，如果存在，则将这个引用返回给变量，否则将引用加入并返回给变量。
+```java
+String str4 = str3.intern();
+System.out.println(str4 == str1);
+```
+输出的结果为true。
+#### 总有例外？
+你知道下面的代码，会创建几个字符串对象，在字符串常量池中保存几个引用么？
+```java
+String test = "a" + "b" + "c";
+```
+答案是只创建了一个对象，在常量池中也只保存一个引用。我们使用javap反编译看一下即可得知。
+实际上在编译期间，已经将这三个字面量合成了一个。这样做实际上是一种优化，避免了创建多余的字符串对象，也没有发生字符串拼接问题.
+***
+## Integer的缓存策略
+在Integer中有一个静态内部类IntegerCache，在IntegerCache有一个静态的Integer数组，在类加载时就将-128到127的Integer对象创建了，并保存在cache数组中。一旦程序调用valueOf方法，如果i的值在-128到127之间就直接在cache缓存数组中去取Integer对象。
+```java
+Integer a = 12;
+//编译期会调用
+Integer a = Integer.valueOf(12);
+```
+```java
+ public static Integer valueOf(int i) {    
+     if(i >= -128 && i <= IntegerCache.high)    
+         return IntegerCache.cache[i + 128];    
+     else    
+         return new Integer(i);    
+ } 
+
+ private static class IntegerCache {    
+     static final int high;    
+     static final Integer cache[];    
+  
+     static {    
+         final int low = -128;    
+  
+         // high value may be configured by property    
+         int h = 127;    
+         if (integerCacheHighPropValue != null) {    
+             // Use Long.decode here to avoid invoking methods that    
+             // require Integer's autoboxing cache to be initialized    
+             int i = Long.decode(integerCacheHighPropValue).intValue();    
+             i = Math.max(i, 127);    
+             // Maximum array size is Integer.MAX_VALUE    
+             h = Math.min(i, Integer.MAX_VALUE - -low);    
+         }    
+         high = h;    
+  
+         cache = new Integer[(high - low) + 1];    
+         int j = low;    
+         for(int k = 0; k < cache.length; k++) //缓存区间数据    
+             cache[k] = new Integer(j++);    
+     }    
+  
+     private IntegerCache() {}    
+ }
+```
+再看其它的包装器：
+
+Boolean：(全部缓存)  
+Byte：(全部缓存)  
+Character(<= 127缓存)  
+Short(-128 — 127缓存)  
+Long(-128 — 127缓存)  
+Float(没有缓存)  
+Doulbe(没有缓存)  
+***
+
+# 数据结构
+## 常用数据结构简介
+list、set、map
+list、set实现collection接口
+map一个key、value键值对
+
+### List有序列表
+1. ArrayList实现了可变大小的数组，它允许所有元素，包括null。ArrayList没有同步。
+2. LinkedList实现方式是链表，允许null，没有同步。
+3. Vector底层实现也是数组，但是Vector是同步的（为所有的方法都加上了synchronized）
+### set不包含重复元素，最多有一个null元素
+set结构其实就是维护一个map来存储数据的，利用map接口key值唯一性（把set中数据作为map的key）
+### map 键值对，key唯一，key可以为null
+HashMap结构的实现原理是将put进来的key-value封装成一个Entry对象存储到一个Entry数组中，数组下标有key的哈希值与数组长度计算而来。如果数组当前下标已有值，把新的Entry的next指向原来的Entry，然后把新的Entry插入的数组中。
