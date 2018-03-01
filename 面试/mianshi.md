@@ -325,6 +325,7 @@ Doulbe(没有缓存)
 ***
 
 # 数据结构
+
 ## 常用数据结构简介
 list、set、map
 list、set实现collection接口
@@ -338,3 +339,20 @@ map一个key、value键值对
 set结构其实就是维护一个map来存储数据的，利用map接口key值唯一性（把set中数据作为map的key）
 ### map 键值对，key唯一，key可以为null
 HashMap结构的实现原理是将put进来的key-value封装成一个Entry对象存储到一个Entry数组中，数组下标有key的哈希值与数组长度计算而来。如果数组当前下标已有值，把新的Entry的next指向原来的Entry，然后把新的Entry插入的数组中。
+### HashSet与Treeset的适用场景
+1. TreeSet是二叉树实现的。TreeSet中的数据是自动排好序，不允许放入null值。
+2. HashSet是哈希表实现的，HashSet中的数据是无序的，可以放入null，但只能放入一个null，两者中的值不能重复。
+3. HashSet要求放入的对象必须实现hashCode()方法，放入的对象是以hashCode码作为标识的，而具有相同内容的String对象，hashCode是一样的，所以放入的内容不能重复。
+4. HashSet是基于hash算法实现的，其性能通常优于TreeSet。为快速查找而设计的set，我们通常都应该使用HashSet。在我们需要排序功能时，我们采用TreeSet。
+
+### HashMap与TreeMap、HashTable的区别及适用场景
+1. HashMap非线程安全
+2. HashMap基于hash表实现。使用HashMap要求添加的键的类明确定义了hashCode()和equals()方法，为了优化HashMap的空间的使用，可以调优初始容量和负载因子。其中散列表的冲突处理主要有两种，一种是开放定址法，另一种是链表法。HashMap的实现中采用了链表法。
+3. TreeMap非线程安全基于红黑树实现。TreeMap没有调优选项，因为该树总处于平衡状态。
+4. HashTable线程安全，不允许null键
+5. HashMap适用于Map中插入,删除和定位元素
+6. TreeMap适用于按自然顺序或自定义顺序遍历key
+
+***
+## 常用并发集合
+ConcurrentHashmap：ConcurrentHashMap作为一种线程安全且高效的哈希表的解决方案，尤其其中的“分段锁”的方案，相比HashTable的全表锁在性能上的提升非常之大
