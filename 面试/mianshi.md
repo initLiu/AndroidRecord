@@ -356,3 +356,200 @@ HashMap结构的实现原理是将put进来的key-value封装成一个Entry对�
 ***
 ## 常用并发集合
 ConcurrentHashmap：ConcurrentHashMap作为一种线程安全且高效的哈希表的解决方案，尤其其中的“分段锁”的方案，相比HashTable的全表锁在性能上的提升非常之大
+***
+
+## 二叉树的深度优先遍历和广度优先遍历的具体实现
+```java
+import java.util.ArrayDeque;
+
+public class BinaryTree {
+
+	private TreeNode root;
+
+	public BinaryTree() {
+		int a[] = new int[10];
+		createBinaryTree(a);
+	}
+
+	private void createBinaryTree(int[] values) {
+		TreeNode node = new TreeNode(2);
+		TreeNode node1 = new TreeNode(3);
+		TreeNode node2 = new TreeNode(4);
+		node.left = node1;
+		node.right = node2;
+
+		TreeNode node3 = new TreeNode(5);
+		TreeNode node4 = new TreeNode(6);
+		node1.left = node3;
+		node1.right = node4;
+
+		TreeNode node5 = new TreeNode(7);
+		TreeNode node6 = new TreeNode(8);
+		node2.left = node5;
+		node2.right = node6;
+
+		TreeNode node7 = new TreeNode(9);
+		TreeNode node8 = new TreeNode(10);
+		node3.left = node7;
+		node3.right = node8;
+
+		TreeNode node9 = new TreeNode(11);
+		node4.left = node9;
+		root = node;
+	}
+
+	/**
+	 * 先序遍历
+	 */
+	public void preOrder() {
+		if (root == null)
+			return;
+		preOrderHelp(root);
+	}
+
+	private void preOrderHelp(TreeNode node) {
+		if (node == null)
+			return;
+		System.out.print(node.value + " ");
+		preOrderHelp(node.left);
+
+		preOrderHelp(node.right);
+	}
+
+	/**
+	 * 中序遍历
+	 */
+	public void inOrder() {
+		if (root == null)
+			return;
+		inOrderHelp(root);
+	}
+
+	private void inOrderHelp(TreeNode node) {
+		if (node == null)
+			return;
+		inOrderHelp(node.left);
+		System.out.print(node.value + " ");
+		inOrderHelp(node.right);
+	}
+
+	/**
+	 * 后序遍历
+	 */
+	public void postOrder() {
+		if (root == null)
+			return;
+		postOrderHelp(root);
+	}
+
+	private void postOrderHelp(TreeNode node) {
+		if (node == null)
+			return;
+		postOrderHelp(node.left);
+		postOrderHelp(node.right);
+		System.out.print(node.value + " ");
+	}
+
+	/**
+	 * 广度优先
+	 */
+	public void breadth_travel() {
+		if (root == null)
+			return;
+		ArrayDeque<TreeNode> queue = new ArrayDeque<>();
+		queue.add(root);
+		while (!queue.isEmpty()) {
+			TreeNode node = queue.remove();
+			if (node != null) {
+				System.out.print(node.value + " ");
+				if (node.left != null) {
+					queue.add(node.left);
+				}
+				if (node.right != null) {
+					queue.add(node.right);
+				}
+			}
+
+		}
+	}
+
+	private class TreeNode {
+		TreeNode left;
+		TreeNode right;
+		int value;
+
+		public TreeNode(int value) {
+			this.value = value;
+			this.left = null;
+			this.right = null;
+		}
+	}
+}
+```
+***
+## 什么是深拷贝和浅拷贝
+如果在拷贝这个对象的时候，只对基础对象进行了拷贝，而引用对象只是进行了引用的传递，而没有真实的创建一个新的对象，则认为是浅拷贝。反之，在对引用对象进行拷贝的时候，创建了一个新的对象，并且复制其内的成员变量，则认为是深拷贝。
+Object类中的clone方法是浅拷贝。
+如果要实现深拷贝，需要实现cloneable接口，clone方法中，调用对象中引用类型变量的clone方法。
+```java
+class Demo implements Cloneable {
+	int a = 23;
+	Demo2 b = new Demo2();
+
+	@Override
+	protected Object clone() throws CloneNotSupportedException {
+		Demo demo = (Demo) super.clone();
+		demo.b = (Demo2) demo.b.clone();
+		return demo;
+	}
+}
+
+class Demo2 implements Cloneable {
+	String a = "asdfasd";
+
+	@Override
+	protected Object clone() throws CloneNotSupportedException {
+		// TODO Auto-generated method stub
+		return super.clone();
+	}
+
+}
+```
+***
+# 线程
+## 开启线程的三种方式？
+1. 继承Thread类，实现Thread类中的run方法，调用Thread对象的start方法开启线程。
+2. 创建Thread对象时传入runnable参数，调用Thread对象的start方法开启线程。
+3. 实现Callable接口（jdk5以后）
+```java
+FutureTask<Integer> ft = new FutureTask<Integer>(new Callable<Integer>() {
+	public Integer call() throws Exception {
+		return null;
+	}
+});
+new Thread(ft).start();
+```
+***
+## 线程和进程的区别？
+进程是cpu资源分配的最小单位,线程是cpu调度的最小单位。线程是建立在进程的基础上的一次程序运行单位。
+***
+## run()和start()方法区别
+1. start()用来启动线程
+2. run()是普通方法调用
+***
+## 如何控制某个方法允许并发访问线程的个数？
+通过Semaphore类。Semaphore.acquire()请求一个信号量，这个时候信号量个数减一（一旦没有可用的信号量即信号量的个数为负数时，再次请求的时候就会阻塞，知道有其他线程释放了这个信号量）。Semaphore.release()释放一个信号量，此时信号量个数加1
+***
+## 在Java中wait和sleep方法的不同；
+1. wait是Object类中的方法，sleep是Thread类中的方法
+2. wait是线程处于阻塞状态并释放锁，sleep使线程处于阻塞状态不会释放锁
+3. wait时间到或者其他线程调用了notify()方法后，wait还需要在锁池中获取锁，然后线程变为可运行状态。Sleep时间结束后线程直接变为可运行状态。
+4. wait需要在同步代码块中执行。sleep不需要。  
+![](./线程状态.png)
+***
+## 谈谈wait/notify关键字的理解
+wait/notify都是object类中的方法。
+1. wait  
+调用wait方法需要在synchronize作用域中。当调用了wait()线程从运行状态变为阻塞状态，同时线程释放掉对象锁。线程阻塞，挂起等待被唤醒。
+2. notify  
+调用notify方法也需要在synchronize作用域中。在Y线程中调用了某个对象的notify()方法后，阻塞的线程x会重新请求对象锁。当y线程运行处synchronize的作用域后，释放掉对象锁。此时x线程的到对象锁，线程变为就绪状态，等待cpu调度执行。
