@@ -779,3 +779,69 @@ lock和lockInterruptibly，如果两个线程分别执行这两个方法，但�
 ## 怎么避免死锁？
 1. 避免同一时刻持有两把锁，在可能的情况下改为先持有A，释放后再申请B。
 2. 如果上述情况无法避免，确保会被同时持有的锁的申请顺序和释放顺序在任何地方都一致。
+***
+
+# Android
+## 1.四大组件是什么
+Activity，Service，BroadcastReceiver，ContentProvider
+## 2.四大组件的生命周期和简单用法
+	1. Activity：
+		* Activity生命周期  
+		![](./Activity生命周期.png)
+		* 简单用法  
+		通过context.startActivity()/context.startActivityForResult()启动
+	2. Service
+		* 生命周期  
+		![](./Service生命周期.png)
+		* 简单用法  
+		通过context.startService()/context.bindService()启动或绑定Service。对于以startService启动的service可以通过service.stopSelf或者context.stopService()方法停止service。对于通过bindService启动的service可以通过context.unbindService()方式解绑。
+	3. BroadCastReceiver
+		* 生命周期  
+		没有生命周期
+		* 简单用法  
+		在AndroidManifest文件中静态注册或者通过Context.registerReceiver动态注册。然后通过context.sendBroadCastReciever()发送广播。  
+		静态注册：是常驻型，当应用程序关闭后，如果有广播发来，程序也会被系统调用接受广播。  
+		动态注册：不是常驻型，程序关闭后就不能接收广播。
+	4. ContentProvider
+		* 生命周期  
+		无
+		* 简单用法  
+		在AndroidManifest文件中注册ContentProvider。然后继承ContentProvider类，重写query，insert，delete，update等方法。在访问时通过ContentResover的query，insert，delete，update方法访问。
+
+## 3.Activity之间的通信方式
+1. intent设置参数,intent.putExtras()，启动activity时通过intent传递。
+2. 发送广播
+3. startActivityForResult启动，在onActivityResult方法中接收
+## 4.Activity各种情况下的生命周期
+1. home键：onPause->onStop
+2. back键: onPause->onStop->onDestroy
+3. 其它应用弹出对话框:onPause
+4. 屏幕旋转
+	1. AndroidManifest中配置了android:configChanges：Activity不会销毁，系统会调用Activity的onConfigurationChanged()方法
+	2. AndroidManifest没有配置android:configChanges：Activity会销毁，然后重建
+## 5.Activity与Fragment之间生命周期比较
+![](./Activity和Fragment生命周期区别.png)
+## 6.Activity上有Dialog的时候按Home键时的生命周期
+如果这个dialog是当前Activity弹出的话，按home键onPause->onStop。如果这个Dialog是其它应用的，按home键onStop
+## 7.两个Activity 之间跳转时必然会执行的是哪几个方法？
+前一个Activity的onPause->onStop
+后一个Activity的onCreate->onStart->onResume
+执行顺序：先执行上一个Activity的onPause，然后新的Activity的onCreate,onStart,onResume，然后上一个Activity的onStop
+## 8.Activity的四种启动模式对比
+* standerd
+每次启动都会在栈顶创建一个Activity对象（如果通过其它应用启动，会在启动方的Activity栈上创建）
+* singleTop
+应用内：如果栈顶存在则复用栈顶Activity（调用Activity的onNewIntent）,如果不存在创建一个新的Activity压入栈顶。
+应用外：会在启动方的Activity栈上创建一个新的Activity  
+应用场景：通知栏
+* singleTask
+看下有没有相同taskaffinity的栈，如果存在这样的栈，将栈中此Activity上面的所有Activity都出栈，然后调用此Activity的onNewIntent方法。如果不存在这样的栈，创一个新的栈将Activity压入栈中。  
+应用场景：App的主页
+* singleInstance
+运行在单独的Activity栈中，并且栈中没有其他的Activity  
+应用场景：一般在launcher中
+## 9.Activity 启动flag
+* FLAG_ACTIVITY_NEW_TASK  
+对于非Activity启动的Activity（service、application）需要显示设置FLAG_ACTIVITY_NEW_TASK。
+* FLAG_ACTIVITY_CLEAR_TOP
+* FLAG_ACTIVITY_SINGLE_TOP
