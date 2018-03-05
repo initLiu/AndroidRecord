@@ -843,5 +843,7 @@ Activity，Service，BroadcastReceiver，ContentProvider
 ## 9.Activity 启动flag
 * FLAG_ACTIVITY_NEW_TASK  
 对于非Activity启动的Activity（service、application）需要显示设置FLAG_ACTIVITY_NEW_TASK。
+
+设置了FLAG_ACTIVITY_NEW_TASK后，先检查有没有相同taskAffinity的栈，不存在则创建一个栈。然后往栈顶压入这个Activity
 * FLAG_ACTIVITY_CLEAR_TOP
 * FLAG_ACTIVITY_SINGLE_TOP
