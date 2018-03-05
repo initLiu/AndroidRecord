@@ -840,10 +840,114 @@ Activity，Service，BroadcastReceiver，ContentProvider
 * singleInstance
 运行在单独的Activity栈中，并且栈中没有其他的Activity  
 应用场景：一般在launcher中
-## 9.Activity 启动flag
+## 9.Activity启动flag
 * FLAG_ACTIVITY_NEW_TASK  
 对于非Activity启动的Activity（service、application）需要显示设置FLAG_ACTIVITY_NEW_TASK。
 
 设置了FLAG_ACTIVITY_NEW_TASK后，先检查有没有相同taskAffinity的栈，不存在则创建一个栈。然后往栈顶压入这个Activity
 * FLAG_ACTIVITY_CLEAR_TOP
+如果Activity栈中存在，把次Activity之上的所有的Activity出栈，然后此Activity也会销毁然后重建
 * FLAG_ACTIVITY_SINGLE_TOP
+和singleTop一样
+
+FLAG_ACTIVITY_NEW_TASK+FLAG_ACTIVITY__CLEAR_TOP+FLAG_ACTIVITY_SINGLE_TOP=singleTask
+## 10.Activity状态保存于恢复
+在onSaveInstanceState(Bundle)方法中保存Activity的状态，在onRestoreInstanceState(Bundle)/onCreate中恢复Activity的状态
+## 11.fragment各种情况下的生命周期
+1. 通过show/hide方法不会调用fragment的生命周期方法
+```java
+public void hideFragment(Fragment fragment, int transition, int transitionStyle) {
+	....
+	fragment.mView.setVisibility(View.GONE);
+}
+
+public void showFragment(Fragment fragment, int transition, int transitionStyle) {
+	....
+	fragment.mView.setVisibility(View.VISIBLE);
+}
+```
+通过源码可以看到调用hide、show方法只是对fragment的view进行显示隐藏，所以fragment的生命周期方法不会被调用。
+
+2. add、remove、replace会使fragment创建或销毁
+## 12.Fragment状态保存
+在onSaveInstanceState(Bundle)保存，在onActivityCreated中恢复
+区分View的状态和Fragment的状态，不要在Fragment中保存View的状态，应该由View自己来保存。
+在View中，重写onSaveInstanceState和onRestoreInstacneState方法，并且给View设置id，就可以保存view的状态
+
+状态保存的传递过程。在activity的onSaveInstanceState中调用window.saveHierarchyState()方法，然后调用PhoneWindow的contentParent的saveHierarchyState方法传递到View，然后调用dispatchSaveInstanceState方法，ViewGroup重写了此方法，在ViewGroup中会保存ViewGroup自己的状态然后传递到子View中。
+```java
+//Activity.java
+protected void onSaveInstanceState(Bundle outState) {
+	outState.putBundle(WINDOW_HIERARCHY_TAG, mWindow.saveHierarchyState());
+	Parcelable p = mFragments.saveAllState();
+	if (p != null) {
+		outState.putParcelable(FRAGMENTS_TAG, p);
+	}
+	getApplication().dispatchActivitySaveInstanceState(this, outState);
+}
+//PhoneWindow.java
+@Override
+public Bundle saveHierarchyState() {
+	Bundle outState = new Bundle();
+	if (mContentParent == null) {
+		return outState;
+	}
+
+	SparseArray<Parcelable> states = new SparseArray<Parcelable>();
+	mContentParent.saveHierarchyState(states);
+	...
+}
+
+//View.java
+public void saveHierarchyState(SparseArray<Parcelable> container) {
+	dispatchSaveInstanceState(container);
+}
+
+//ViewGroup.java
+@Override
+protected void dispatchSaveInstanceState(SparseArray<Parcelable> container) {
+	super.dispatchSaveInstanceState(container);
+	final int count = mChildrenCount;
+	final View[] children = mChildren;
+	for (int i = 0; i < count; i++) {
+		View c = children[i];
+		if ((c.mViewFlags & PARENT_SAVE_DISABLED_MASK) != PARENT_SAVE_DISABLED) {
+			c.dispatchSaveInstanceState(container);
+		}
+	}
+}
+
+//View.java
+protected void dispatchSaveInstanceState(SparseArray<Parcelable> container) {
+	if (mID != NO_ID && (mViewFlags & SAVE_DISABLED_MASK) == 0) {
+		mPrivateFlags &= ~PFLAG_SAVE_STATE_CALLED;
+		Parcelable state = onSaveInstanceState();
+		if ((mPrivateFlags & PFLAG_SAVE_STATE_CALLED) == 0) {
+			throw new IllegalStateException(
+					"Derived class did not call super.onSaveInstanceState()");
+		}
+		if (state != null) {
+			// Log.i("View", "Freezing #" + Integer.toHexString(mID)
+			// + ": " + state);
+			container.put(mID, state);
+		}
+	}
+}
+```
+## 13.Activity和Fragment交互方式
+1. Activity中通过fragmentmanager的findFragmentByTag或者findFragmentByid获取fragment实例，然后直接访问Fragment的public方法
+2. 在Fragment中定义回调借口listener，由Activity实现，然后在Fragment的onAttach获取到该Activity，然后强转回listener，之后就可以和Activity通信。
+
+## 14.Fragment之间的通信
+1. 通过fragment.setTargetFragment(Fragment)然后在另一个fragment中处理完后调用fragment.getTargetFragmetn()得到目标fragment，调用fragment的onActivityResult方法传递数据
+2. 通过activity中转
+3. 在fragment中获取另外一个fragment的实例，调用共有方法
+## 15.startActivityForResult是哪个类的方法，在什么情况下使用？
+是Activity类中的方法。需要新启动的Activity回传数据给原来的Activity的情况下使用
+## 16.如何实现Fragment的滑动？
+可以使用Fragment+ViewPager的方式
+继承FragmentPagerAdapter并且重写getItem方法返回Fragment。然后给ViewPager设置adapter。
+## 17.ViewPager实现原理
+ViewPager会缓存当前位置的前一个和后一个item。  
+当ViewPager滑动时会判断当前的位置，然后将滑出的item加入缓存并且提前加载下一个item。
+
