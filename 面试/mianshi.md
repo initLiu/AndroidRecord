@@ -1201,5 +1201,123 @@ Activity的context的生命周期和Activity一致。
 属性动画是通过改变View的属性（坐标，透明度，其他任何属性）的值，在绘制时（onDraw）通过读取这些更改后的属性值动态绘制View，实现动画效果。
 ## 28.Android补间动画
 补间动画只能作用于View，只能实现旋转，缩放，位移，透明度这些操作。补间动画的原理是通过Animation.getTransformation方法获取到当前时间动画的属性，然后根据这些属性对view的canvas做位移、缩放等操作来实现动画效果。
-## 29.差值器
-根据事件流逝的百分比 计算 当前属性改变的百分比
+## 29.差值器、估值器
+差值器：根据时间流逝的百分比 计算 当前属性改变的百分比
+估值器：根据当前属性改变的百分比来计算改变后的属性值。
+
+属性动画是对属性做动画，属性要实现动画，首先由差值器根据时间流逝的百分比计算出当前属性改变的百分比，并且差值器将这个百分比返回，这个时候差值器的工作就完成了。比如差值器返回的值是0.5，分显然我们要的不是0.5，而是当前属性的值，即当前属性改变成了什么值，这就需要估值器根据当前属性改变的百分比来计算改变后的属性值，根据这个属性值，我们就可以设置当前属性的值了。
+## 30.介绍下SurfView
+SurfaceView内部有一个独立的surface绘图表面。这使得SurfaceView可以在独立的线程中进行绘制。普通的View都是共享的父View的绘图表面（ViewRootImpl中）
+SurfaceView在onAttachedToWindow时获取父view的IWindowSession对象，token也是获取父View的mWindowToken(IWindow)。在onWindowVisibilityChanged时创建W对象并且通过session添加到wms。
+## 31.序列化的作用，以及Android两种序列化的区别
+序列化的作用：将数据序列化为字节流，可以使数据在网络中传输，也可以存储到文件中。
+1. 通过实现serializeable 通过反射的方式实现数据的序列化和反序列化，效率低
+2. 通过实现parcelable 序列化和反序列的过程自己实现，效率高
+```java
+public void writeToParcel(Parcel dest,int flags)//将序列化过程
+public xxx createFromParcel(Parcel in)//反序列化过程
+```
+## 32.requestlayout，onlayout，onDraw，drawChild区别与联系
+* 调用requestLayout()会使View树重新measure和layout
+* onLayout用来布局子view
+* onDraw用来绘制自己
+* drawChild在ViewGroup中用来调用子View的draw方法进行绘制
+
+## 33.View的绘制流程
+整个绘制的过程从ViewRootImpl.performTraversals()方法开始。
+
+measure：从ViewRootImpl.performMeasure开始，调用View树的顶层View的measure方法，然后调用onMeasure方法测量自己并且设置测量宽高。如果该View是ViewGroup，在onMeasure中会调用子View的measure方法对子View进行测量。  
+layout：从ViewRootImpl.performLayout开始，调用View树的顶层View的layout方法，在layout方法中会设置view的left，right，top，bottom位置，然后调用onLayout方法，如果该View是ViewGroup需要重写此方法，然后调用子View的layout方法布局子View  
+draw：从ViewRootImpl.performDraw开始，调用View树的顶层View的draw(Canvas)方法，在draw方法中主要做了一下事情:
+	1. 绘制背景drawBackgroupd
+	2. 绘制自己的内容 onDraw
+	3. 绘制子view dispatchDraw。ViewGroup重写了此方法，在此方法中调用了子view的draw(Canvas,ViewGroup,log)
+	4. 绘制fade effect
+	5. 绘制foreground，scrollbar
+
+## 34.invalidate和postInvalidate的区别及使用
+invalidate在主线程上调用
+postInvalidate可以在子线程上调用。在View内部会调用ViewRootImpl中主线程的handler发送消息。
+## 35.Activity-Window-View三者的差别
+Activity用于控制，window是对View操作的封装，View显示视图
+1. 在Activity的attach方法中，创建了window对象
+2. 在Activity调用setContentView其实是调用window.setContentView，将布局添加到decorview中。  
+![](./PhoneWindow.PNG)
+## 36.如何优化自定义View
+1. 不应该在onDraw()方法中做内存分配的事情，因为onDraw()方法会被频繁的调用，因此会造成短时间内内存频繁的申请释放，触发gc，从而导致卡顿。
+2. 尽量减少onDraw的调用次数。只有在绘制内容改变后才调用onDraw。如果可能的还，尽量调用含4个参数的invalidate()方法，确定绘制的区域。
+3. 另一个非常耗时的操作是请求layout。任何时候执行requestLayout，会使系统遍历整个View的层级来计算出每一个View的大小。另外需要尽量保持View的层级扁平化，这样提高效率。
+4. 对于特别复杂的ui，可以考虑用自定义View来实现，避免通过复杂的view嵌套实现。
+## 37.低版本SDK如何实现高版本api？
+增加@TargetApi消除编译时异常，同时在代码中判断运行时的版本，在低版本系统上不调用此方法，自己实现此方法。
+## 38.描述一次网络请求的流程
+1. 建立tcp连接
+2. 客户端想服务端发送http请求
+3. 服务器端处理客户端请求
+4. 服务器端响应客户端请求
+5. 服务器关闭tcp连接
+## 39.HttpUrlConnection 和 okhttp关系
+HttpUrlConnection的底层实现是okhttp
+## <font color='red'>40.Bitmap对象的理解</font>
+Bitmap是对图片的抽象，里面存储着图片的像素信息。在2.3.3之前Bitmap的像素数据的内存是分配在Native堆上的，而Bitmap对象的内存分配在Dalvik堆上，由于Native堆上的内存不收虚拟机管理，如果想回收Bitmap所占用的内存的话，需要调用bitmap的recycle()方法。在2.3.3之后Bitmap的像素数据的内存也分配到了Dalvik堆上了。
+
+BitmapFactory加载bitmap时需要注意内存占用情况，通过BitmapFactory.Option
+1. inPreferredConfi制定图片的加载方式(ARGB888/RGB565)
+2. inSampleSize 对图片进行缩放
+3. inBitmap bitmap复用
+4. inPurgedable设置为true表示在内存不足时用于存储像素的内存可以被回收
+
+加载Bitmap时要加上try catch，防止oom异常抛出
+## 40.Loop架构
+Loop是一个消息循环，handler是处理消息的接口，MessageQueue是消息队列，Message是消息的载体
+Loop是一个死循环不断的从MessageQueue中取消息，如果MessageQueue中没有消息，那么将会阻塞线程。取到消息后通过msg.target.dispathMessage方法将消息传递到handler中。在handler的dispatchMessage方法中会先判断msg是否有callback，如果有回调msg的callback。如果没有，在检查handler是否有callback，如果有调用handler的callback，如果没有调用handler的handleMessage方法处理消息。
+
+Handler的构造方法中会获取本线程上的Looper，然后通过loop获取到MessageQueue。
+```java
+public Handler(Callback callback, boolean async) {
+	if (FIND_POTENTIAL_LEAKS) {
+		final Class<? extends Handler> klass = getClass();
+		if ((klass.isAnonymousClass() || klass.isMemberClass() || klass.isLocalClass()) &&
+				(klass.getModifiers() & Modifier.STATIC) == 0) {
+			Log.w(TAG, "The following Handler class should be static or leaks might occur: " +
+				klass.getCanonicalName());
+		}
+	}
+
+	mLooper = Looper.myLooper();
+	if (mLooper == null) {
+		throw new RuntimeException(
+			"Can't create handler inside thread that has not called Looper.prepare()");
+	}
+	mQueue = mLooper.mQueue;
+	mCallback = callback;
+	mAsynchronous = async;
+}
+```
+通过Handler的sendMessageXXX或者postXXX将消息插入到消息队列MessageQueue中。发送消息前Handler会为消息Message的target属性赋值为当前的Handler对象，这样在Looper中就是可以回调此Handler的dispatchMessage方法了。
+通过postXXX方式发送的消息，其实是创建了一个Message然后将runable赋值给了Message.callback字段，最后将Message插入到消息队列中。
+
+## 41.Looper
+Looper.prepare用来创建Looper。在Looper中有一个ThreadLocal变量，它会保证一个线程只能有一个Looper。
+Looper.loop开启消息循环
+<font color='red'>一个线程中可一个有多个handler，但是只有一个Looper</font>
+在线程中创建Looper的方法
+```java
+public LoopThread extends Thread{
+	Handler handler = null;
+	public void run(){
+		Looper.prepare();
+		handler = new Handler(){
+			public void handleMessage(){
+
+			}
+		};
+		Looper.Loop();
+	}
+}
+```
+## 42.ThreadLocal
+每个线程Thread中都有一个ThreadLocalMap类型的字段，这个这段保存着一个键值对其中key为ThreadLocal对象，value为要保存的对象。  
+调用ThreadLocal的set方法时，首先获得当前线程Thread的ThreadLocalMap类型的字段，然后以ThreadLocal为key，设定的值为value，存入到map中。  
+调用ThreadLocal的get方法时，首先获得当前线程Thread的ThreadLocalMap类型的字段，然后从map中查找key为当前ThreadLocal的value值。
+这样每个线程都各自拥有一个变量，并非是共享的。
