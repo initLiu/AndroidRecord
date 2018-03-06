@@ -785,28 +785,28 @@ lock和lockInterruptibly，如果两个线程分别执行这两个方法，但�
 ## 1.四大组件是什么
 Activity，Service，BroadcastReceiver，ContentProvider
 ## 2.四大组件的生命周期和简单用法
-	1. Activity：
-		* Activity生命周期  
-		![](./Activity生命周期.png)
-		* 简单用法  
-		通过context.startActivity()/context.startActivityForResult()启动
-	2. Service
-		* 生命周期  
-		![](./Service生命周期.png)
-		* 简单用法  
-		通过context.startService()/context.bindService()启动或绑定Service。对于以startService启动的service可以通过service.stopSelf或者context.stopService()方法停止service。对于通过bindService启动的service可以通过context.unbindService()方式解绑。
-	3. BroadCastReceiver
-		* 生命周期  
-		没有生命周期
-		* 简单用法  
-		在AndroidManifest文件中静态注册或者通过Context.registerReceiver动态注册。然后通过context.sendBroadCastReciever()发送广播。  
-		静态注册：是常驻型，当应用程序关闭后，如果有广播发来，程序也会被系统调用接受广播。  
-		动态注册：不是常驻型，程序关闭后就不能接收广播。
-	4. ContentProvider
-		* 生命周期  
-		无
-		* 简单用法  
-		在AndroidManifest文件中注册ContentProvider。然后继承ContentProvider类，重写query，insert，delete，update等方法。在访问时通过ContentResover的query，insert，delete，update方法访问。
+1. Activity：
+	* Activity生命周期  
+	![](./Activity生命周期.png)
+	* 简单用法  
+	通过context.startActivity()/context.startActivityForResult()启动
+2. Service
+	* 生命周期  
+	![](./Service生命周期.png)
+	* 简单用法  
+	通过context.startService()/context.bindService()启动或绑定Service。对于以startService启动的service可以通过service.stopSelf或者context.stopService()方法停止service。对于通过bindService启动的service可以通过context.unbindService()方式解绑。
+3. BroadCastReceiver
+	* 生命周期  
+	没有生命周期
+	* 简单用法  
+	在AndroidManifest文件中静态注册或者通过Context.registerReceiver动态注册。然后通过context.sendBroadCastReciever()发送广播。  
+	静态注册：是常驻型，当应用程序关闭后，如果有广播发来，程序也会被系统调用接受广播。  
+	动态注册：不是常驻型，程序关闭后就不能接收广播。
+4. ContentProvider
+	* 生命周期  
+	无
+	* 简单用法  
+	在AndroidManifest文件中注册ContentProvider。然后继承ContentProvider类，重写query，insert，delete，update等方法。在访问时通过ContentResover的query，insert，delete，update方法访问。
 
 ## 3.Activity之间的通信方式
 1. intent设置参数,intent.putExtras()，启动activity时通过intent传递。
@@ -950,4 +950,256 @@ protected void dispatchSaveInstanceState(SparseArray<Parcelable> container) {
 ## 17.ViewPager实现原理
 ViewPager会缓存当前位置的前一个和后一个item。  
 当ViewPager滑动时会判断当前的位置，然后将滑出的item加入缓存并且提前加载下一个item。
+## 18.Activity 怎么和Service 绑定？
+通过bindserver
+## 19.怎么在Activity 中启动自己对应的Service？
+startService/bindService
+## 20.service和activity怎么进行数据交互？
+1. 通过bindService绑定service。在ServiceConnection的onServiceConnected会调用获取到service中的binderProxy，和service通信
+2. 发送广播
+3. 通过Messenger
+```java
+//client
+ServiceConnection connection = new ServiceConnection() {
+	@Override
+	public void onServiceConnected(ComponentName componentName, IBinder iBinder) {
+		Messenger toServiceMessenger = new Messenger(iBinder);
 
+		Message msg = Message.obtain();
+		msg.what = 0x11;
+		msg.replyTo = messenger;
+		try {
+			toServiceMessenger.send(msg);
+		} catch (RemoteException e) {
+			e.printStackTrace();
+		}
+
+	}
+
+	@Override
+	public void onServiceDisconnected(ComponentName componentName) {
+
+	}
+};
+//server
+Messenger messenger = new Messenger(new Handler() {
+	@Override
+	public void handleMessage(Message msg) {
+		if (msg.what == 0x11) {
+			Log.e("Test", "receive client message");
+
+			Message toClientMsg = Message.obtain();
+			toClientMsg.what = 0x22;
+			try {
+				msg.replyTo.send(toClientMsg);
+			} catch (RemoteException e) {
+				e.printStackTrace();
+			}
+		}
+	}
+});
+
+@Nullable
+@Override
+public IBinder onBind(Intent intent) {
+	return messenger.getBinder();
+}
+```
+## 21.谈谈你对ContentProvider的理解
+ContentProvider是Android四大组件之一。ContentProvider为存储和获取数据提供统一的接口，可以再不同应用程序之间共享数据。ContentProvider提供了对底层数据存储方式的抽象。如底层可以采用SQLite方式存储数据，使用ContentProvider封装之后，即便底层换成了xml存储也不会对上层应用代码差生影响。
+
+每一个ContentProvider都拥有一个公共的URI，这个URI用于表示这个ContentProvider所提供的数据。
+
+上层ContentResolver通过ContentProvider的uri来操作ContentProvder中的数据。
+### ContentProvider是如何实现共享数据的？
+1. 继承ContentProvider并重写insert，query，update，delete等方法。
+2. 在AndroidManifest文件中通过<provider>标签配置ContentProvider。为了能够让其他应用找到该ContentProvider，ContentProvider需要采用authorities对它进行唯一标示。
+	```java
+	<manifest .... >  
+		<application android:icon="@drawable/icon" android:label="@string/app_name">  
+			<provider android:name=".PersonContentProvider"  
+				android:authorities="com.example.providers.personprovider" />  
+		</application>  
+	</manifest> 
+	```
+3. 在其他应用中通过ContentResolver使用定义的uri访问并操作这些被暴露的数据。
+
+### ContentProvider如何控制数据访问权限？
+一种方式是向此应用设置一个android:sharedUserId,然后需要访问此数据的应用也设置同一个sharedUserId，具有相同的sharedUserId的应用间可以共享数据。但是这种方法不够安全，也无法做到对不同数据进行不同读写权限的管理。
+
+另一种方法是使用ContentProvider中的数据共享规则。这里涉及到几个重要的标签：
+```xml
+android:exported设置此provider是否可以被其他应用使用
+android:readPermission该provider的读取权限的标识
+android:writePermission该provider的写权限标识
+android:permission provider读写权限标识
+android:grantUriPermission临时权限标识，true时，意味着该provider下所有数据均可被临时使用；false时，则反之，但可以通过设置<grant-uri-permission>标签来指定哪些路径可以被临时使用。
+```
+具体操作如下：
+先修改AndroidManifest.xml，让ContentProvider可以被其他应用查询到：
+```xml
+<permission android:name="com.example.providers.personprovider.READ" android:protectionLevel="normal"/>
+
+<provider
+	android:authorities="com.example.providers.personprovider"
+	android:name=".PersonContentProvider"
+	android:readPermission=""com.example.providers.personprovider.READ"
+	android:exported="true"/>
+```
+然后在其他应用中可以使用以下权限来对PersonContentProvider进行访问。
+```xml
+<uses-permission android:name=""com.example.providers.personprovider.READ"/>
+```
+如果希望对provider里不同的表设置不同的权限，需要使用provider提供的子标签<path-permission>，可以对不同path设置不同的权限规则。path-permission包括了以下几个标签。
+```xml
+<path-permission
+	android:path=""
+	android:pathPrefix=""
+	android:permission=""
+	android:readPermission=""
+	android:writePermission=""/>
+```
+### 监听者ContentObserver
+如果ContentProvider的访问者需要知道ContentProvider中的数据发生变化，可以在ContentProvider发生数据变化时调用getContentResolver().notifyChange(uri,null)来通知注册在此uri上的访问者，例子如下：
+```java
+public class PersonContentProvider extends ContentProvider{
+	public Uri insert(Uri uri,ContentValues values){
+		db.insert("person","personid",values);
+		getContext().getContentResolver().notifyChange(uri,null);
+	}
+}
+```
+如果ContentProvider的访问者需要得到数据变化通知，必须使用ContentObserver对数据进行监听，当监听到数据变化通知时，系统就会调用ContentObserver的onChange()方法：
+```java
+getContentResolver().registerContentObserver(Uri.parse("content://com.example.providers.personprovider/person"),true,new PersonObserver(new Handler()));
+public class PersonObserver extends ContentObserver{
+	public PersonObserver(Handler handler){
+		super(handler);
+	}
+
+	public void onChange(boolen selfChange){
+		//do change
+	}
+}
+```
+## 22.广播的分类
+广播分为有序广播和普通广播。也可以分为全局广播和局部内广播
+## 23.广播使用的方式和场景
+有序广播：按照广播的优先级，优先级高的先处理，处理完后在传递到优先级低的Receiver中。可以对广播传递过程中进行处理和截断
+应用内广播：LocalBroadcastManager，限制广播只能在本应用内传递，消除了安全隐患
+## 24.本地广播和全局广播有什么差别？
+因广播数据在本应用范围内传播，不用担心隐私数据泄露的问题。 不用担心别的应用伪造广播，造成安全隐患。 相比在系统内发送全局广播，它更高效。
+本地广播（LocalBroadcastManager）实现的核心是Handler
+```java
+private LocalBroadcastManager(Context context) {
+	mAppContext = context;
+	mHandler = new Handler(context.getMainLooper()) {
+
+		@Override
+		public void handleMessage(Message msg) {
+			switch (msg.what) {
+				case MSG_EXEC_PENDING_BROADCASTS:
+					executePendingBroadcasts();
+					break;
+				default:
+					super.handleMessage(msg);
+			}
+		}
+	};
+}
+
+public void registerReceiver(BroadcastReceiver receiver, IntentFilter filter) {
+	synchronized (mReceivers) {
+		ReceiverRecord entry = new ReceiverRecord(filter, receiver);
+		ArrayList<IntentFilter> filters = mReceivers.get(receiver);
+		if (filters == null) {
+			filters = new ArrayList<IntentFilter>(1);
+			mReceivers.put(receiver, filters);
+		}
+		filters.add(filter);
+		for (int i=0; i<filter.countActions(); i++) {
+			String action = filter.getAction(i);
+			ArrayList<ReceiverRecord> entries = mActions.get(action);
+			if (entries == null) {
+				entries = new ArrayList<ReceiverRecord>(1);
+				mActions.put(action, entries);
+			}
+			entries.add(entry);
+		}
+	}
+}
+
+public boolean sendBroadcast(Intent intent) {
+	synchronized (mReceivers) {
+		final String action = intent.getAction();
+		final String type = intent.resolveTypeIfNeeded(
+				mAppContext.getContentResolver());
+		final Uri data = intent.getData();
+		final String scheme = intent.getScheme();
+		final Set<String> categories = intent.getCategories();
+
+		ArrayList<ReceiverRecord> entries = mActions.get(intent.getAction());
+		ArrayList<ReceiverRecord> receivers = null;
+		for (int i=0; i<entries.size(); i++) {
+			ReceiverRecord receiver = entries.get(i);
+			int match = receiver.filter.match(action, type, scheme, data,
+                            categories, "LocalBroadcastManager");
+			if (match >= 0) {
+				if (receivers == null) {
+					receivers = new ArrayList<ReceiverRecord>();
+				}
+				receivers.add(receiver);
+				receiver.broadcasting = true;
+			} 
+		}
+
+		if (receivers != null) {
+			for (int i=0; i<receivers.size(); i++) {
+				receivers.get(i).broadcasting = false;
+			}
+			mPendingBroadcasts.add(new BroadcastRecord(intent, receivers));
+			if (!mHandler.hasMessages(MSG_EXEC_PENDING_BROADCASTS)) {
+				mHandler.sendEmptyMessage(MSG_EXEC_PENDING_BROADCASTS);
+			}
+			return true;
+		}
+	}
+}
+
+private void executePendingBroadcasts() {
+	while (true) {
+		BroadcastRecord[] brs = null;
+		synchronized (mReceivers) {
+			final int N = mPendingBroadcasts.size();
+			if (N <= 0) {
+				return;
+			}
+			brs = new BroadcastRecord[N];
+			mPendingBroadcasts.toArray(brs);
+			mPendingBroadcasts.clear();
+		}
+		for (int i=0; i<brs.length; i++) {
+			BroadcastRecord br = brs[i];
+			for (int j=0; j<br.receivers.size(); j++) {
+				br.receivers.get(j).receiver.onReceive(mAppContext, br.intent);
+			}
+		}
+	}
+}
+```
+## 25.AlertDialog,popupWindow,Activity区别
+Activity默认窗口类型是TYPE_BASE_APPLICATION
+Dialog默认窗口类型是TYPE_APPLICATION
+PopupWindow的默认窗口类型是TYPE_APPLICATION_PANEL
+Dialog和Activity都是通过PhoneWindow管理窗口行为，PopupWindow需要自行管理
+
+Activity Manager System（重点是ActivityManagerService，简称AmS）负责Activity的启动，以及生命周期的管理。一个Activity对应一个应用窗口，这个窗口的创建以及管理是Window and View Manager System的职责。View系统管理每个窗口中复杂的布局，最终这个View Hierarchy最顶端的根View会被作为窗口，添加到Window Manager System中。Window Manager System管理着所有这些添加的窗口，负责管理这些窗口的层次，显示位置等内容。每个窗口都有一块自己的Surface，Surface Flinger负责把这些Surface合成一块FrameBuffer。也就是说Window Manager System负责窗口的创建与移除，以及显示状态的管理。具体绘制是由Suerface Flinger来负责的。
+## 26.Application 和 Activity 的 Context 对象的区别
+Application的Context的生命周期为和应用程序一致
+Activity的context的生命周期和Activity一致。
+## 27.Android属性动画特性
+属性动画是通过改变View的属性（坐标，透明度，其他任何属性）的值，在绘制时（onDraw）通过读取这些更改后的属性值动态绘制View，实现动画效果。
+## 28.Android补间动画
+补间动画只能作用于View，只能实现旋转，缩放，位移，透明度这些操作。补间动画的原理是通过Animation.getTransformation方法获取到当前时间动画的属性，然后根据这些属性对view的canvas做位移、缩放等操作来实现动画效果。
+## 29.差值器
+根据事件流逝的百分比 计算 当前属性改变的百分比
