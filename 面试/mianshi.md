@@ -1321,3 +1321,213 @@ public LoopThread extends Thread{
 调用ThreadLocal的set方法时，首先获得当前线程Thread的ThreadLocalMap类型的字段，然后以ThreadLocal为key，设定的值为value，存入到map中。  
 调用ThreadLocal的get方法时，首先获得当前线程Thread的ThreadLocalMap类型的字段，然后从map中查找key为当前ThreadLocal的value值。
 这样每个线程都各自拥有一个变量，并非是共享的。
+## 43.ActivityThread，AMS，WMS的工作原理
+### ActivityThread
+1. ActivityThread是Binder的服务端，在AMS对Activity栈做完初始化工作后，会将控制权通过BinderIpc转义到ActivityThread。ActivityThread负责创建Application和Activity对象。然后回调Activity的生命周期方法。
+2. ActivityThread.main()方法是java的入口，在main方法中主要是初始化ui线程的Looper，创建ActivityThread实例
+```java
+public static void main(String[] args) {
+	...
+	Looper.prepareMainLooper();
+	ActivityThread thread = new ActivityThread();
+	thread.attach(false);
+	if (sMainThreadHandler == null) {
+		sMainThreadHandler = thread.getHandler();
+	}
+	Looper.loop();
+	....
+}
+```
+3. AMS发送过来的消息都会通过类型为H的handler分发，这样就保证了所有的消息都是运行在主线程上。
+### AMS
+AMS负责创建和初始化Activity栈
+### WMS
+WMS负责管理窗口，显示区域，以及把消息派发到对应的View中。  
+ViewRootImpl通过sWinownSession这个BinderProxy和WMS通信（addToDisplay）。WMS创建WindowState对象用来在WMS中表示一个窗口，然后通过WindowState.mClient对象IPC和ViewRootImpl.W对象通信。
+## 44.View事件传递
+```java
+public boolean dispatchTouchEvent(MotionEvent ev){
+	if(action==ACTION_DOWN || mFirstTouchTarget!=null){
+		intercept = onInterceptTouchEvent(ev);
+	}else{
+		intercept = true;
+	}
+	if(!intercept){
+		if(action==ACTION_DOWN){
+			View[] childs = getAvaliableChild();
+			int len = childs.lenght;
+			for(int i=0;i<len;i++){
+				View child = childs[i];
+				handled = child.dispatchTouchEvent(action);
+				if(handle){
+					mFirstTouchTarget = child;
+				}
+			}
+		}
+	}
+	if(mFirstTouchTarget==null){
+		handled = onTouchEvent()
+	}else{
+		if(handled){
+			return handled;
+		}
+
+		if(intercept){
+			action = ACTION_CANCLE;
+			handled = mFirstTouchTarget.dispatchTouchEvent(action);
+			mFirstTouchTarget = null;
+		}else{
+			handled = mFirstTouchTarget.dispatchTouchEvent(action);
+		}
+	}
+	return handled;
+}
+```
+**ACTION_DOWN事件：**  
+如果本View拦截了此事件，事件直接传递到本View的onTouchEvent中处理。如果本View没有拦截此事件，事件传递到子View，如果子View处理此事件那么直接将处理结果返回，如果子View没有处理此事件，那么事件传递到本View的onTouchEvent中处理然后将结果返回。  
+如果没有View处理ACTION_DOWN事件，事件将会停止发送，后续不会有ACTION_MOVE,ACTION_UP
+**非ACTION_DOWN事件：**  
+有mFirstTouchTarget：不论本View是否拦截此事件，事件直接传递到mFirstTouchTarget中处理。如果本View拦截了本次事件，那么传递到mFirstTouchTarget的是ACTION_CANCLE事件。  
+无mFirstTouchTarget：事件直接传递到本View的onTouchEvent中处理。  
+## 45.AsyncTask 如何使用?
+AsyncTask.execute是在子线程上串行执行（将任务先添加到一个队列中，在任务执行完后从队列中取下一个执行）  
+AsyncTask.executeOnExcutor 线程池并行执行  
+AsyncTask默认的线程池的核心线程数为cpu数+1，最大线程数为cpu数*2+1，工作队列的长度为128。如果任务过多，超过工作队列和最大线程数后，AsyncTask默认抛出异常导致进程挂掉。AsyncTask全部执行完毕后，进程中还是会常驻cpu数+1个线程
+## 46.线程池ThreadPollExcutor
+构造方法
+```java
+public ThreadPoolExecutor(int corePoolSize,
+                          int maximumPoolSize,
+                          long keepAliveTime,
+                          TimeUnit unit,
+                          BlockingQueue<Runnable> workQueue,
+                          ThreadFactory threadFactory,
+                          RejectedExecutionHandler handler)
+```
+* corePoolSize核心线程数，即使没有任务核心线程也不会终止（除非设置了allowCoreThreadTimeOut参数），可以理解为“常驻线程”
+* maximumPoolSize线程池中允许的最大线程数目；一般来说，线程越多，线程调用开销越大；因此一般都有这个限制；
+* keepAliveTime，当线程池中的线程数目比核心线程多的时候，如果超过这个keepAliveTime的时间，多余的线程会被回收。这些与核心线程相对的线程通常被称为缓存线程
+* unit，keepAliveTime的时间单位
+* workQueue，任务执行前保存任务的队列；这个队列仅保存有excute体检的Runnble任务
+* threadFactory，用来构造线程池的工厂，一般都是使用默认的
+* handler，当线程池由于线程数据和队列限制而导致后续任务阻塞的时候，线程池的处理方式。
+
+那么，当一个新的任务到达的时候，线程池中的线程是如何调度的？
+1. 如果线程池中线程数目少于corePoolSize，就算线程池中有其他的没事做的核心线程，线程池还是会创建一个核心线程；直到核心线程数目到达corePoolSize
+2. 如果线程池中线程的数目大于或者等于corePoolSize，但是工作队列workQueue没有满，那么新的任务会放在队列workQueue中，按照FIFO的原则一次等待执行
+3. 如果线程池数据大于等于corePoolSize，并且工作队列workQueue满了，但是总线程数目小于maximumPoolSize，那么直接创建一个线程处理被添加的任务。
+4. 如果工作队列满了，并且线程池中线程的数目到达了最大数目，那么就会用最后一个构造参数handler处理，默认的处理方式是直接丢掉任务，然后抛出一个异常。
+
+总结起来，也就是说，当有新的任务要处理时，**现看线程池中的线程数量是否大于corePoolSize，再看缓冲队列workQueue是否满，最后看线程池中的最大线程数量是否大于maximunPoolSize**。另外，当线程池中的线程数量大于corePoolSize时，如果里面有线程的空闲时间超过了keepAlveTime，就将其移除线程池，这样，可以动态调整线程池中线程的数量。
+## 47.如何取消AsyncTask？
+```java
+AsyncTask.cancle(boolean mayInterruptIfRunning)
+```
+如果调用cancle(false)，doInBackGround()仍然会执行到方法结束，只是不会去调用onPostExecute()方法。如果调用cancle(true)，会使任务尽早结束，但是如果doInBackground()有不可打断的方法会失效。
+## 48.为什么不能在子线程更新UI？
+更新ui最后会调用到ViewRootImpl.inValidateChildInParent方法，在这个方法中会调用checkThread()检查当前的线程是不是和创建ViewRootImpl的线程一致，如果不一致则抛出异常。
+对于Activity来说创建ViewRootImpl是在ActivityThread的handleResumeActivity()方法中，因为ActivityThread运行在主线程，所以更新ui必须要在主线程中。
+## 49.ANR产生的原因是什么？
+产生的原因：1.主线程被阻塞 2.主线程耗时太长没能及时完成
+1. 应用在5s内未响应用户的输入事件
+2. BroadcastReceiver未在10s内完成相关的处理
+3. Service的各个生命周期函数在20s内没有完成处理
+## 50.oom
+内存溢出
+### 什么情况导致oom
+1.内存不足（加载大图） 2.内存泄漏容易导致oom
+### 解决方法避免oom
+1. 减少对象的内存占用
+	1. 使用更加轻量的数据结构 ArrayMap，SparseArray
+	2. 避免在Android里面使用Enum
+	3. 减少Bitmap对象的内存占用
+		* inSampleSize 缩放
+		* decode format 解码格式选择ARGB_8888/RGB565/ARGC_4444/ALPHA_8
+	4. 使用更小的图片
+2. 内存对象的重复利用
+	1. 复用系统自带的资源
+		Android系统本身内置了很多资源如字符串、颜色、图片、动画、样式
+	2. 在ListView中复用子组件的视图convertView
+	3. Bitmap对象的复用
+		inBitmap
+	4. 避免在onDraw方法里执行对象的创建
+	5. 大量的字符串拼接用StringBuilder替代
+3. 避免内存泄漏
+	1.注意Activity的泄漏  
+		* 内部类引用导致Activity的泄漏
+		* Activity的Context被传递到其他实例中，可能导致泄漏
+	2. 考虑使用Application的context替代Activity的context
+	3. 注意临时Bitmap对象的及时回收
+	4. 监听器的注销
+	5. 注意缓存容器中的对象泄漏
+	6. 资源及时释放，cursor，io等
+4. 内存使用策略优化
+	1. 综合考虑设备内存阈值与其他因素设计合适的缓存大小
+		* 应用程序剩下了多少可用内存空间
+		* 有多少图片会被一次呈现到屏幕上
+		* 设备的屏幕大小与密度是多少。一个xhdpi的设备会比hdpi需要一个更大的cache
+	2. 资源文件需要选择合适的文件夹进行存放
+	3. try catch某些大内存分配的操作
+	6. 谨慎使用static对象
+## 51.Fragment懒加载
+```java
+public void setUserVisibleHint(boolean isVisibleToUser)
+```
+此方法会在FragmentStatePagerAdapter的inStantiateItem和setPrimaryItem两个方法中被调用。在inStantiateItem中被调用时，Fragment还没有开始其生命周期，在setPrimaryItem中被调用时Fragment可能已经创建了其视图。
+
+通过isVisibleToUser然后在判断当前view是否被创建来判断是否需要加载数据
+## 52.IntentService
+1. 实现原理
+IntentService继承至service。在onCreate方法中开启了一个HandlerThread线程，在onStartCommand中向子线程发送消息，然后调用onHandleIntent处理消息，处理完之后调用stopSelf停止service。
+## 53.LinearLayout和RelativeLayout性能对比
+1. RelativeLayout会让子View调用2次measure，LinearLayout在有weight时，也会调用2次measure.
+2. RelativeLayout的子View如果高度和RelativeLayout不同，则会引发效率问题，当子View很复杂时，这个问题会更加验证。如果可以，尽量使用padding代替margin。
+3. 在不影响层级深度的情况下，使用LinearLayout和FrameLayout而不是RelativeLayout.
+## 54.Binder机制
+### 为什么使用Binder？
+> Android使用的Linux内核拥有非常多的跨进程通信机制，比如管道，System V,Socket等；为什么还需要单独搞一个Binder出来呢？主要有两点，性能和安全。在移动设备上，广泛地使用跨进程通信肯定对通信机制本身提出了严格的要求；Binder相对传统的Socket方式，更加高效；另外，传统的进程通信方式对于通信双发的身份并没有做出严格的验证，只有在上层协议上进行假设；比如Socket通信ip地址是客户端手动填入的，都可以进行伪造；而Binder机制从协议本身就支持对通信双发做身份校验，因为大大提升了安全性。这个也是Android权限模型的基础。
+### Binder通信模型
+> 对于跨进程通信的双发，我们姑且叫做Server进程（简称Server），Client进程（简称Client）；由于进程隔离的存在，它们之间没有办法通过简单的方式进行通信，那么Binder机制是如何进行的呢？
+回想一下日常生活中我们通信的过程：假设A和B要进行通信，通信的媒介是打电话（A是Client，B是Server）；A要给B打电话，必须知道B的号码，这个号码怎么获取呢？**通信录**。这个通信录就是一张表；内容大致是:
+```
+1 B -> 123456789
+2 C -> 123856974
+```
+> 先查阅通信录，拿到B的号码；才能进行通信；否则，怎么知道应该拨什么号码？回想一下古老的电话机，如果A要给B打电话，必须先连接通话中心，说明给我接通B的电话；这时候通话中心帮他呼叫B；连接建立，就完成了通信。
+另外，光有电话和通讯录是不可能完成通信的，没有基站支持；信息根本无法传达。
+我们看到，一次电话通信的过程处理通信双发还有两个隐藏角色；通信录和基站。Binder通信机制也是一样：两个运行在用户空间的进程要完成通信，必须借助内核的帮助；这个运行在内核里面的程序叫做**Binder驱动**，它的功能类似于基站；通信录呢，就是一个叫做**ServiceManager**的东西（简称SM）
+ok，Binder的通信模型就是这么简单，如下图：  
+![](./Binder通信模型.png)
+整个通信步骤如下：
+1. SM建立（建立通信录）；首先有个一进程向驱动提出申请为SM；驱动同意之后，SM集成负责管理Service（注意这里是Service而不是Server，因为如果通信过程反过来的话，那么原来的客户端Client也会成为服务端Server）不过这时候通信录还是空的，一个号码都没有。
+2. 各个Server向SM注册（完善通信录）；每个Server端进程启动后，向SM报告，我是zhangsan，要找我请返回0x1234（这个地址没有实际意义，类比）；其他Server进程依次如此；这样SM就建立了一张表，对应着各个Server的名字和地址；
+3. Client想要与Server通信，首先询问SM；请告诉我如何联系zhangsan，SM收到后给他一个号码0x1234；Client收到之后，开心滴用这个号码拨通了Server的电话，于是就开始通信了。
+### Binder机制跨进程原理
+> 上文给给出了Binder的通信模型，指出了通信过程的四个角色：Client，Server，SM，driver；但是我们仍然不清楚Client到底是如何与Server完成通信的。
+两个运行在用户空间的进程A和进程B如何完成通信呢？内核可以访问A和B的所有数据；所以，最简单的方式就是通过内核做中转；假设进程A要给进程B发送数据，那么就先把A的数据copy到内核空间，然后把内核空间对应的数据copy到B就完成了；用户空间要操作内核空间，需要通过系统调用；刚好，这里就有两个系统调用：copy_from_user,copy_to_user。
+但是，Binder机制并不是这么干的。讲这么一段，是说明进程间通信并不是什么神秘的东西。那么，Binder机制是如何实现跨进程通信的呢？
+Binder驱动为我们做了一切。
+假设Client进程想要调用Server进程的object对应的一个方法add；对于这个跨进程通信过程，我们来看看Binder机制是如何做的。![](./Binder通信过程.png)
+首先，Server进程要想SM注册；告诉自己是谁，自己有什么能力；在这个场景就是Server告诉SM，他叫zhangsan，他有一个object对象，可以执行add操作；于是SM建立了一张表：zhangsan这个名字对应进程Server；
+然后Client向SM查询：我需要联系一个名字叫做zhangsan的进程里面的object对象；这时候关键来了：进程之间通信的数据都会经过运行在内核空间里面的驱动，驱动在数据流过的时候做了一点手脚，它并不会给Client进程返回一个真正的object对象，而是返回一个看起来跟object一模一样的代理对象objcetProxy，这个objectProxy也有一个add方法，但是这个add方法没有Server进程里面object对象的add方法那个能力；objectProxy的add只是一个傀儡，他唯一做的时间就是把参数包装然后交给驱动。
+但是Client进程并不知道驱动返回给它的对象动过手脚，毕竟伪装的太像了，如假包换。Client开开心心地拿着objectProxy对象然后调用add方法；我们说过，这个add什么也不做，直接把参数做一些包装然后直接转发给Binder驱动。
+驱动收到这个消息，发现是这个objectProxy；一查表就明白了：我之前用objectProxy替换了object发送给Client了，他真正应该要访问的是object对象的add方法；于是Binder驱动通知Server进程，调用你的object对象的add方法，然后把结果发给我，Server进程收到这个消息，照做之后将结果返回驱动，驱动然后把结果返回给Client进程；于是整个过程就完成了。
+由于驱动返回的objectProxy与Server进程里面原始的object是如此相似，给人的感觉好像是直接把Server进程里面的对象object传递到了Client进程，因此，我们可以说Binder对象是可以跨进程传递对象。
+但事实上我们知道，Binder跨进程传输并不是真的把一个对象传输到了另外一个进程；传输的过程好像是BInder跨进程穿越的时候，它在一个进程留下了一个真身，在另外一个进程幻化出一个影子；client进程的操作其实是对影子的操作，影子利用Binder驱动最终让真身完成操作。
+
+## 55.Android进程级别
+1. 前台进程
+	* 进程持有一个正在和用户交互的Activity
+	* 进程持有一个service，这个service与用户正在交互的Activity绑定
+	* 进程持有一个service，这个service是前台运行（startForenground）
+	* 进程持有一个service，这个service正在执行生面周期方法（oncreate，onstart，onDestroy）
+	* 进程持有一个BroadcastReceiver,这个BroadcastReceiver正在执行onReceive方法
+2. 可见进行
+	* 进程持有一个Activity，这个Activity可见但不在前台（执行了onPause但没有执行onStop，弹出了dialog）
+	* 进程持有一个service，这个service和一个可见的activity绑定
+3. 服务进程
+	* 进程持有一个service，这个service通过startservice方法启动但不属于以上两种时
+4. 后台进程
+	* 进程持有一个activity，acitivty运行到了onstop，但没有到onDestroy
+5. 空进程
+	* 进程中不包含活动应用组件
