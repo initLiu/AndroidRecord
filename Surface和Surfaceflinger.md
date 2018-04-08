@@ -60,7 +60,7 @@ public final class ViewRootImpl implements ViewParent,
     // Surface can never be reassigned or cleared (use Surface.clear()).
     final Surface mSurface = new Surface();
 
-    private Choreographer.FrameCallback mRenderProfiler;
+    private Choreographer.FrameCallback mRenderProfiler;//这个在接下来的文章中分析（接收VSYN信号的回调，刷新屏幕）
     
     public ViewRootImpl(Context context, Display display) {
         mWindowSession = WindowManagerGlobal.getWindowSession();
@@ -436,3 +436,4 @@ static jlong nativeLockCanvas(JNIEnv* env, jclass clazz,
 
 ### 2.View.draw(canvas);
 这个流程就比较简单了。把canvas传递到各个View后，在draw方法中调用canvas的api进行绘制。
+### 3.surface.unlockCanvasAndPost
