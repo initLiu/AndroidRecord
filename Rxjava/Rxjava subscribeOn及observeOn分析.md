@@ -34,6 +34,14 @@ public static <T> Observable<T> unsafeCreate(OnSubscribe<T> f) {
 ```
 调用subscribeOn方法之后，实际上又创建了一个<code>OperatorSubscribeon</code>类型的<code>OnSubscribe</code>，并且把当前的<code>Observable</code>对象以及<code>scheduler</code>存储在<code>OperatorSubscribeon</code>中，最后通过<code>unsafeCreate</code>方法创建一个新的<code>Observable</code>并返回。
 
+所以整个过程相当于：  
+1. 创建一个OperatorSubscribeOn，这个订阅者持有原始Observable对象的引用
+2. 创建一个目标Subscriber的代理对象SubscribeOnSubscriber
+3. 在subscribeOn指定的线程上，通过原始Observable对象拿到原始的OnSubscribe对象，调用它的call(Subscriber)方法，传入的参数为代理对象SubscribeOnSubscriber
+4. 调用目标Subscriber的onNext(T)方法
+整个流程如下图：  
+![](./4.png)
+
 # 2
 ```java
 Obserbable.observeOn()
@@ -91,6 +99,7 @@ public final class OnSubscribeLift<T, R> implements OnSubscribe<R> {
 
 通过上面的分析可以知道，在调用<code>subscribeOn</code>方法后创建了一个新的Observable对象这个对象持有的的<code>OnSubscribe</code>对象中保存了原始<code>Observable</code>对象和<code>scheduler</code>的引用。
 然后调用<code>obserbeOn</code>方法后也创建了一个新的<code>Observable</code>对象，这个对象持有的<code>OnSubscribe</code>对象中保存了原始<code>OnSubscribe</code>对象的引用，并且在这个新的<code>OnSubscribe</code>的对象中还持有一个<code>Operator</code>对象的引用。
+![](./2.png)
 
 # 3
 在调用<code>subscribe</code>方法订阅事件的时候
@@ -126,11 +135,11 @@ public final class OnSubscribeLift<T, R> implements OnSubscribe<R> {
     @Override
     public void call(Subscriber<? super R> o) {
         try {
-            Subscriber<? super T> st = RxJavaHooks.onObservableLift(operator).call(o);
+            Subscriber<? super T> st = RxJavaHooks.onObservableLift(operator).call(o);／／3.1.1
             try {
                 // new Subscriber created and being subscribed with so 'onStart' it
                 st.onStart();
-                parent.call(st);
+                parent.call(st);/／3.1.2
             } catch (Throwable e) {
                 // localized capture of errors rather than it skipping all operators
                 // and ending up in the try/catch of the subscribe method which then
@@ -147,4 +156,80 @@ public final class OnSubscribeLift<T, R> implements OnSubscribe<R> {
     }
 }
 ```
-![](./1.png)
+**3.1.1**  
+首先调用了<code>OperatorObserveOn.call(Subscriber)</code>方法创建了一个代理<code>Subscriber</code>对象，被代理的是外部传来的原始的Subscribe对象。
+```java
+//OperatorObserveOn.java
+@Override
+public Subscriber<? super T> call(Subscriber<? super T> child) {
+    if (scheduler instanceof ImmediateScheduler) {
+        // avoid overhead, execute directly
+        return child;
+    } else if (scheduler instanceof TrampolineScheduler) {
+        // avoid overhead, execute directly
+        return child;
+    } else {
+        ObserveOnSubscriber<T> parent = new ObserveOnSubscriber<T>(scheduler, child, delayError, bufferSize);
+        parent.init();
+        return parent;
+    }
+}
+
+static final class ObserveOnSubscriber<T> extends Subscriber<T> implements Action0 {
+    final Subscriber<? super T> child;
+    final Scheduler.Worker recursiveScheduler;
+    public ObserveOnSubscriber(Scheduler scheduler, Subscriber<? super T> child, boolean delayError, int bufferSize) {
+        this.child = child;
+        this.recursiveScheduler = scheduler.createWorker();
+        ....
+    }
+}
+```
+**3.1.2**  
+然后调用被代理的原始的<code>OnSubscribe</code>对象的<code>OnSubscribe.call(Subscribe)</code>方法。传入的参数为**3.1.1**中创建的代理<code>Subscribe</code>对象。
+在原始的<code>OnSubscribe.call(Subscribe)</code>方法中假如调用了<code>Subscribe.onNext(T)</code>方法。那么就会调用到**3.1.1**中的代理<code>Subscribe</code>对象中的<code>onNext(T)</code>方法。
+```java
+static final class ObserveOnSubscriber<T> extends Subscriber<T> implements Action0 {
+    final Subscriber<? super T> child;
+    final Scheduler.Worker recursiveScheduler;
+
+    public ObserveOnSubscriber(Scheduler scheduler, Subscriber<? super T> child, boolean delayError, int bufferSize) {
+        this.child = child;
+        this.recursiveScheduler = scheduler.createWorker();
+    }
+
+    @Override
+    public void onNext(final T t) {
+        if (isUnsubscribed() || finished) {
+            return;
+        }
+        if (!queue.offer(NotificationLite.next(t))) {
+            onError(new MissingBackpressureException());
+            return;
+        }
+        schedule();
+    }
+    //会通过过Scheduler.Worker，在observeOn指定的线程上调用call方法
+    protected void schedule() {
+        if (counter.getAndIncrement() == 0) {
+            recursiveScheduler.schedule(this);
+        }
+    }
+
+    @Override
+    public void call() {
+        ...
+        final Subscriber<? super T> localChild = this.child;
+        ...
+        localChild.onNext(NotificationLite.<T>getValue(v));
+    }
+}
+```
+![](./3.png)  
+所以整个过程相当于：  
+1. 创建一个原始OnSubscribe的代理对象OnSubscribeLift
+2. 创建一个目标Subscriber的代理对象ObserveOnSubscriber
+3. 调用原始OnSubscribe对象的call(Subscriber)方法，参数为ObserveOnSubscriber
+4. 调用代理对象ObserveOnSubscriber的onNext(T)方法
+5. 在observeOn指定的线程上调用目标Subscriber的onNext(T)方法
+
