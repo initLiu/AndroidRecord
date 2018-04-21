@@ -233,3 +233,5 @@ static final class ObserveOnSubscriber<T> extends Subscriber<T> implements Actio
 4. 调用代理对象ObserveOnSubscriber的onNext(T)方法
 5. 在observeOn指定的线程上调用目标Subscriber的onNext(T)方法
 
+将subscribeOn和observeOn合并起来的流程如下：
+![](./1.png)
