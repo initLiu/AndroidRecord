@@ -127,7 +127,7 @@ private void dispatchLayoutStep1() {
     mState.mLayoutStep = State.STEP_LAYOUT;
 }
 ```
-# Step4：dispatchLayoutStep2
+## Step4：dispatchLayoutStep2
 ```java
 private void dispatchLayoutStep2() {
     startInterceptRequestLayout();
