@@ -646,6 +646,19 @@ ViewHolder tryGetViewHolderForPositionByDeadline(int position,
         }
     }
     ...
+    boolean bound = false;
+    if (mState.isPreLayout() && holder.isBound()) {
+        // do not update unless we absolutely have to.
+        holder.mPreLayoutPosition = position;
+    } else if (!holder.isBound() || holder.needsUpdate() || holder.isInvalid()) {//判断是否需要重新绑定view
+        if (DEBUG && holder.isRemoved()) {
+            throw new IllegalStateException("Removed holder should be bound and it should"
+                    + " come here only in pre-layout. Holder: " + holder
+                    + exceptionLabel());
+        }
+        final int offsetPosition = mAdapterHelper.findPositionOffset(position);
+        bound = tryBindViewHolderByDeadline(holder, offsetPosition, position, deadlineNs);//绑定view
+    }
     final ViewGroup.LayoutParams lp = holder.itemView.getLayoutParams();
     final LayoutParams rvLayoutParams;
     if (lp == null) {
@@ -660,6 +673,34 @@ ViewHolder tryGetViewHolderForPositionByDeadline(int position,
     rvLayoutParams.mViewHolder = holder;
     rvLayoutParams.mPendingInvalidate = fromScrapOrHiddenOrCache && bound;
     return holder;
+}
+
+private boolean tryBindViewHolderByDeadline(ViewHolder holder, int offsetPosition,
+                int position, long deadlineNs) {
+    ...
+    mAdapter.bindViewHolder(holder, offsetPosition);
+    ...
+    return true;
+}
+//RecyclerView.Adapter
+public final void bindViewHolder(@NonNull VH holder, int position) {
+    holder.mPosition = position;//设置ViewHolder的position
+    if (hasStableIds()) {
+        holder.mItemId = getItemId(position);
+    }
+    //设置flag标志位
+    holder.setFlags(ViewHolder.FLAG_BOUND,
+            ViewHolder.FLAG_BOUND | ViewHolder.FLAG_UPDATE | ViewHolder.FLAG_INVALID
+                    | ViewHolder.FLAG_ADAPTER_POSITION_UNKNOWN);
+    TraceCompat.beginSection(TRACE_BIND_VIEW_TAG);
+    //调用Adapter的onBindViewHolder方法
+    onBindViewHolder(holder, position, holder.getUnmodifiedPayloads());
+    holder.clearPayload();
+    final ViewGroup.LayoutParams layoutParams = holder.itemView.getLayoutParams();
+    if (layoutParams instanceof RecyclerView.LayoutParams) {
+        ((LayoutParams) layoutParams).mInsetsDirty = true;
+    }
+    TraceCompat.endSection();
 }
 ```
 ### 4.从缓存中获取ViewHolder
@@ -724,5 +765,164 @@ ViewHolder getScrapOrHiddenOrCachedHolderForPosition(int position, boolean dryRu
         }
     }
     return null;
+}
+```
+***
+# 滑动过程中ViewHolder的回收复用
+```java
+public boolean onTouchEvent(MotionEvent e) {
+    ....
+    case MotionEvent.ACTION_MOVE: {
+        ...
+        if (scrollByInternal(
+                canScrollHorizontally ? dx : 0,
+                canScrollVertically ? dy : 0,
+                vtev)) {
+            getParent().requestDisallowInterceptTouchEvent(true);
+        }
+    }
+}
+
+boolean scrollByInternal(int x, int y, MotionEvent ev) {
+    ...
+    if (x != 0) {
+        consumedX = mLayout.scrollHorizontallyBy(x, mRecycler, mState);
+        unconsumedX = x - consumedX;
+    }
+    if (y != 0) {
+        consumedY = mLayout.scrollVerticallyBy(y, mRecycler, mState);
+        unconsumedY = y - consumedY;
+    }
+    ...
+}
+//LinearLayoutManager.scrollVerticallyBy
+@Override
+    public int scrollVerticallyBy(int dy, RecyclerView.Recycler recycler,
+        RecyclerView.State state) {
+    if (mOrientation == HORIZONTAL) {
+        return 0;
+    }
+    return scrollBy(dy, recycler, state);
+}
+
+int scrollBy(int dy, RecyclerView.Recycler recycler, RecyclerView.State state) {
+    if (getChildCount() == 0 || dy == 0) {
+        return 0;
+    }
+    mLayoutState.mRecycle = true;
+    ensureLayoutState();
+    final int layoutDirection = dy > 0 ? LayoutState.LAYOUT_END : LayoutState.LAYOUT_START;//根据滑动的距离（正负），确定layout的方向
+    final int absDy = Math.abs(dy);
+    //Step1：确定本次填充的大小位置等信息
+    updateLayoutState(layoutDirection, absDy, true, state);
+    //Step2：填充RecylcerView
+    final int consumed = mLayoutState.mScrollingOffset
+            + fill(recycler, mLayoutState, state, false);
+    if (consumed < 0) {
+        if (DEBUG) {
+            Log.d(TAG, "Don't have any more elements to scroll");
+        }
+        return 0;
+    }
+    final int scrolled = absDy > consumed ? layoutDirection * consumed : dy;
+    //Step3：移动RecylcerView
+    mOrientationHelper.offsetChildren(-scrolled);
+    if (DEBUG) {
+        Log.d(TAG, "scroll req: " + dy + " scrolled: " + scrolled);
+    }
+    mLayoutState.mLastScrollDelta = scrolled;
+    return scrolled;
+}
+```
+
+## Step1：确定本次填充的大小位置等信息
+```java
+private void updateLayoutState(int layoutDirection, int requiredSpace,
+            boolean canUseExistingSpace, RecyclerView.State state) {
+    // If parent provides a hint, don't measure unlimited.
+    mLayoutState.mInfinite = resolveIsInfinite();
+    mLayoutState.mExtra = getExtraLayoutSpace(state);
+    mLayoutState.mLayoutDirection = layoutDirection;
+    int scrollingOffset;
+    if (layoutDirection == LayoutState.LAYOUT_END) {//向下填充
+        mLayoutState.mExtra += mOrientationHelper.getEndPadding();
+        // get the first child in the direction we are going
+        final View child = getChildClosestToEnd();//获取到最下面的一个item
+        // the direction in which we are traversing children
+        mLayoutState.mItemDirection = mShouldReverseLayout ? LayoutState.ITEM_DIRECTION_HEAD
+                : LayoutState.ITEM_DIRECTION_TAIL;
+        mLayoutState.mCurrentPosition = getPosition(child) + mLayoutState.mItemDirection;//接下来要填充的item的position
+        mLayoutState.mOffset = mOrientationHelper.getDecoratedEnd(child);//获取最后一个item的bottom坐标，在填充时用来确定相对于开始位置的偏移量
+        // calculate how much we can scroll without adding new children (independent of layout)
+        scrollingOffset = mOrientationHelper.getDecoratedEnd(child)
+                - mOrientationHelper.getEndAfterPadding();//这种情况是：最后一个item没有完全显示出来，这个scrollingOffset就是可以滚动的距离
+    }else{
+        ...
+    }
+    mLayoutState.mAvailable = requiredSpace;//手指滑动的距离设置到mAvailable上，表示要填充区域的大小
+    if (canUseExistingSpace) {
+        mLayoutState.mAvailable -= scrollingOffset;//在最后一个item没有完全显示出来的情况下，要填充的区域mAvailable=mAvailable-scrollingOffset
+    }
+    mLayoutState.mScrollingOffset = scrollingOffset;
+}
+```
+## Step2：填充RecylcerView
+```java
+int fill(RecyclerView.Recycler recycler, LayoutState layoutState,
+            RecyclerView.State state, boolean stopOnFocusable) {
+    // max offset we should set is mFastScroll + available
+    final int start = layoutState.mAvailable;
+    //通过step1可以知道，这里mScrollingOffset！=SCROLLING_OFFSET_NaN
+    if (layoutState.mScrollingOffset != LayoutState.SCROLLING_OFFSET_NaN) {
+        // TODO ugly bug fix. should not happen
+        if (layoutState.mAvailable < 0) {
+            layoutState.mScrollingOffset += layoutState.mAvailable;
+        }
+        recycleByLayoutState(recycler, layoutState);//将滚动过程中移除屏幕外的view的viewHolder添加到mCachedViews或者RecycledViewPool，并且将view冲RecylcerView中remove掉
+    }
+    int remainingSpace = layoutState.mAvailable + layoutState.mExtra;//可用的填充区域的大小
+    LayoutChunkResult layoutChunkResult = mLayoutChunkResult;
+    //接下来就开始填充，原理同之前的分析
+    while ((layoutState.mInfinite || remainingSpace > 0) && layoutState.hasMore(state)) {
+        layoutChunkResult.resetInternal();
+        if (VERBOSE_TRACING) {
+            TraceCompat.beginSection("LLM LayoutChunk");
+        }
+        layoutChunk(recycler, state, layoutState, layoutChunkResult);
+        if (VERBOSE_TRACING) {
+            TraceCompat.endSection();
+        }
+        if (layoutChunkResult.mFinished) {
+            break;
+        }
+        layoutState.mOffset += layoutChunkResult.mConsumed * layoutState.mLayoutDirection;
+        /**
+            * Consume the available space if:
+            * * layoutChunk did not request to be ignored
+            * * OR we are laying out scrap children
+            * * OR we are not doing pre-layout
+            */
+        if (!layoutChunkResult.mIgnoreConsumed || mLayoutState.mScrapList != null
+                || !state.isPreLayout()) {
+            layoutState.mAvailable -= layoutChunkResult.mConsumed;
+            // we keep a separate remaining space because mAvailable is important for recycling
+            remainingSpace -= layoutChunkResult.mConsumed;
+        }
+
+        if (layoutState.mScrollingOffset != LayoutState.SCROLLING_OFFSET_NaN) {
+            layoutState.mScrollingOffset += layoutChunkResult.mConsumed;
+            if (layoutState.mAvailable < 0) {
+                layoutState.mScrollingOffset += layoutState.mAvailable;
+            }
+            recycleByLayoutState(recycler, layoutState);
+        }
+        if (stopOnFocusable && layoutChunkResult.mFocusable) {
+            break;
+        }
+    }
+    if (DEBUG) {
+        validateChildOrder();
+    }
+    return start - layoutState.mAvailable;
 }
 ```
