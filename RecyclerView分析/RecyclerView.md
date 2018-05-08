@@ -657,7 +657,8 @@ ViewHolder tryGetViewHolderForPositionByDeadline(int position,
                     + exceptionLabel());
         }
         final int offsetPosition = mAdapterHelper.findPositionOffset(position);
-        bound = tryBindViewHolderByDeadline(holder, offsetPosition, position, deadlineNs);//绑定view
+        //4.绑定view
+        bound = tryBindViewHolderByDeadline(holder, offsetPosition, position, deadlineNs);
     }
     final ViewGroup.LayoutParams lp = holder.itemView.getLayoutParams();
     final LayoutParams rvLayoutParams;
@@ -674,7 +675,10 @@ ViewHolder tryGetViewHolderForPositionByDeadline(int position,
     rvLayoutParams.mPendingInvalidate = fromScrapOrHiddenOrCache && bound;
     return holder;
 }
-
+```
+### 4.绑定view
+<font color='red' size=8>注意：这里和之后的RecylcerView局部更新有关</font>
+```java
 private boolean tryBindViewHolderByDeadline(ViewHolder holder, int offsetPosition,
                 int position, long deadlineNs) {
     ...
@@ -682,6 +686,7 @@ private boolean tryBindViewHolderByDeadline(ViewHolder holder, int offsetPositio
     ...
     return true;
 }
+
 //RecyclerView.Adapter
 public final void bindViewHolder(@NonNull VH holder, int position) {
     holder.mPosition = position;//设置ViewHolder的position
