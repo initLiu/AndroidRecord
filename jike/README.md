@@ -1,2 +1,2 @@
 仿即刻首页滚动效果
-![](./a.gif)
+![](https://github.com/initLiu/AndroidRecord/blob/master/jike/aa.gif)
