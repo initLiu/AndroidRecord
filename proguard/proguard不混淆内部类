@@ -1,0 +1,23 @@
+-keepattributes Exceptions,InnerClasses,...  
+-keep class [packagename].A{  
+    *;  
+}  
+-keep class [packagename].A$* {  
+    *;  
+} 
+
+其中 A$* 表示所有A的内部类都保留下来，也可以如下使用：
+
+-keepattributes Exceptions,InnerClasses,...  
+-keep class com.xxx.A{ *; }  
+-keep class com.xxx.A$B { *; }  
+-keep class com.xxx.A$C { *; }  
+
+这样可以根据需要只保留A的某一个内部类
+
+以下是proguard文件一部分
+
+#-keepattributes Exceptions,InnerClasses,Signature,Deprecated,SourceFile,LineNumberTable,*Annotation*,EnclosingMethod
+-keepattributes Exceptions,InnerClasses,...
+-keep class com.yulore.reverselookup.api.YuloreWindowConfiguration{ *; }
+-keep class com.yulore.reverselookup.api.YuloreWindowConfiguration$Builder{ *; }
