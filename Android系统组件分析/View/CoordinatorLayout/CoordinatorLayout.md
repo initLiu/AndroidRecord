@@ -1,0 +1,13 @@
+## CoordinatorLayout作用是
+1. 将传递到自身的touch事件（onInterceptTouchEvent/onTouchEvent）传递到直接子view的behavior中，由直接子view的hehavior决定是否处理，然后将处理结果返回。  
+ * onInterceptTouchEvent：依次调用直接子view的behavior，根据behavior的返回值判断behavior是否拦截此事件，如果拦截了事件那么保存这个直接子view（mBehaviorTouchView），然后向其他直接子view的behavior发送ACTION_CANCEL事件。
+ * onTouchEvent：如果mBehaviorTouchView不为null，将事件传递到mBehaviorTouchView的behavior中处理。如果mBehaviorTouchView为null，依次调用直接子view的behavior，根据behavior的返回值判断behavior是否处理此事件，如果处理此事件保存这个直接子view（mBehaviorTouchView），然后向其他直接子view的behavior发送ACTION_CANCEL事件并且向CoordinatorLayout的父view发送ACTION_CANCEL事件。
+
+2. 依次将onMeasure、onLayout传递到直接子view的behavior中，由behavior处理子view的measure和layout，如果behavior没有处理才会调用自身的处理方法进行处理。
+3. 将嵌套滑动相关的转到发所有的直接子view的behavior（所有的直接子view的behavior都有机会处理嵌套滑动事件）
+
+
+## AnchorView（锚点）
+**作为锚点view的条件**
+1. CoordinatorLayout不能作为锚点的view
+2. 不能是设置锚点的view的子view
